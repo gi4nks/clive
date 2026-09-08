@@ -10,6 +10,9 @@ import { isProtectedPath } from '../systemGuard.js'
 export const ACTIONS_OPEN = '<<<ACTIONS>>>'
 export const ACTIONS_CLOSE = '<<<END>>>'
 
+/** Stable sentinel stored in `actionErrors` when the user cancels an action card. */
+export const CANCELLED_SENTINEL = 'chat-cancelled'
+
 export type ChatActionType = 'rename' | 'organize' | 'create' | 'trash'
 
 export interface RenameAction { type: 'rename'; file: string; newName: string }

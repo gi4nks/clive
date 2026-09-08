@@ -190,6 +190,22 @@
     "noPath": "Il nome non può contenere percorsi",
     "noChange": "Nessuna modifica"
   },
+  "chat": {
+    "title": "Chat AI",
+    "placeholder": "Chiedi dei file, richiedi un'operazione…",
+    "send": "Invia",
+    "empty": "Inizia una conversazione. I file selezionati e la cartella corrente sono condivisi con il modello.",
+    "applied": "Applicata",
+    "appliedShort": "Applicata",
+    "cancelled": "Annullata",
+    "removeFile": "Rimuovi",
+    "action": {
+      "rename": "Rinomina",
+      "organize": "Sposta in cartella",
+      "create": "Crea file",
+      "trash": "Cestina"
+    }
+  },
   "settings": {
     "title": "Impostazioni",
     "general": "Generale",

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { ChatController } from './useChat.js'
-import type { ChatAction } from './chat.js'
+import { CANCELLED_SENTINEL, type ChatAction } from './chat.js'
 
 /**
  * Right-side chat drawer (Task 5 of the AI chat plan). Consumes the Task-4
@@ -104,7 +104,7 @@ export function ChatDrawer({ open, onClose, ai }: { open: boolean; onClose: () =
             {ai.addedFiles.map((f) => (
               <span key={f.path} className="badge badge-outline badge-sm gap-1">
                 {f.name}
-                <button onClick={() => ai.removeAdded(f.path)} aria-label="rimuovi">×</button>
+                <button onClick={() => ai.removeAdded(f.path)} aria-label={t('chat.removeFile')}>×</button>
               </span>
             ))}
           </div>
@@ -156,7 +156,7 @@ function ActionCard({
   const label = t(`chat.action.${a.type}`)
   const summary = describeAction(a)
   const isApplied = !!applied && !error
-  const isCancelled = !!applied && error === 'annullata'
+  const isCancelled = !!applied && error === CANCELLED_SENTINEL
   return (
     <div className="mt-1 rounded-lg border border-base-300 bg-base-200/50 p-2 text-xs">
       <div className="mb-1 font-semibold">

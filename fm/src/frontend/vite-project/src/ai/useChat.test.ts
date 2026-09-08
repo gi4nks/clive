@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
 import { useChat } from './useChat.js'
+import { CANCELLED_SENTINEL } from './chat.js'
 import * as runtime from './runtime.js'
 import * as fsBridge from './fs.js'
 
@@ -242,6 +243,19 @@ describe('useChat', () => {
       await Promise.all([p1, p2])
     })
     expect(fsBridge.moveToTrash).toHaveBeenCalledTimes(1)
+    expect(result.current.messages[1].actionsApplied?.[0]).toBe(true)
+  })
+
+  it('cancelAction stores CANCELLED_SENTINEL (contract pinned with ChatDrawer)', async () => {
+    vi.mocked(runtime.streamChat).mockReturnValue(streamTrash('/d/a') as never)
+    const { result } = renderHook(() => useChat(deps()))
+    await act(async () => {
+      await result.current.send('go')
+    })
+    act(() => {
+      result.current.cancelAction(1, 0)
+    })
+    expect(result.current.messages[1].actionErrors?.[0]).toBe(CANCELLED_SENTINEL)
     expect(result.current.messages[1].actionsApplied?.[0]).toBe(true)
   })
 

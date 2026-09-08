@@ -2,10 +2,15 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, fireEvent, cleanup } from '@testing-library/react'
 
+import { CANCELLED_SENTINEL } from './chat.js'
+
 // Keys pass through verbatim (T7 owns chat.* translations); tests assert on
 // structure/roles and stable substrings, never on localized copy.
+// initReactI18next is required by the real ../i18n module, which chat.ts
+// reaches transitively via safety.ts — the mock must expose it.
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (k: string) => k }),
+  initReactI18next: { type: '3rdParty', init: () => {} },
 }))
 
 import { ChatDrawer } from './ChatDrawer.js'
@@ -47,5 +52,16 @@ describe('ChatDrawer', () => {
     render(<ChatDrawer open={true} onClose={vi.fn()} ai={ai as never} />)
     expect(screen.getByText(/b/)).toBeInTheDocument()
     expect(screen.getAllByRole('button', { name: /apply/i }).length).toBeGreaterThan(0)
+  })
+
+  it('cancelled action shows chat.cancelled via CANCELLED_SENTINEL contract', () => {
+    const ai = makeAI({
+      messages: [
+        { role: 'assistant', content: 'ok', actions: [{ type: 'rename', file: '/a', newName: 'b' }], actionsApplied: [true], actionErrors: [CANCELLED_SENTINEL] },
+      ],
+    })
+    render(<ChatDrawer open={true} onClose={vi.fn()} ai={ai as never} />)
+    expect(screen.getByText(/chat\.cancelled/)).toBeInTheDocument()
+    expect(screen.queryByText(/chat-cancelled/)).not.toBeInTheDocument()
   })
 })

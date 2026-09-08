@@ -8,7 +8,8 @@ import { useCallback, useRef, useState } from 'react'
 import type { FileEntry } from '../api.js'
 import { applyPlan } from './apply.js'
 import { budgetFiles, renderBudgeted, renderDirListing } from './budget.js'
-import { buildChatPrompt, extractActions, validateChatAction, type ChatMessage } from './chat.js'
+import { buildChatPrompt, extractActions, validateChatAction, CANCELLED_SENTINEL, type ChatMessage } from './chat.js'
+import i18n from '../i18n'
 import { isImageName, modelCapabilities, visionGate } from './capabilities.js'
 import { collectFileContents, fs, moveToTrash, writeFile } from './fs.js'
 import { streamChat, type StreamArgs } from './runtime.js'
@@ -188,7 +189,7 @@ export function useChat(deps: UseChatDeps) {
           applied[actIdx] = true
           return { ...m, actionsApplied: applied }
         })
-        d.setStatus('Applicata', 'success')
+        d.setStatus(i18n.t('chat.appliedShort'), 'success')
         d.refresh()
       } catch (e) {
         const msg2 = String(e)
@@ -208,7 +209,7 @@ export function useChat(deps: UseChatDeps) {
         const cancelled = [...(m.actionsApplied ?? [])]
         cancelled[actIdx] = true // reuse flag as "no more interactive"
         const errs = [...(m.actionErrors ?? [])]
-        errs[actIdx] = 'annullata'
+        errs[actIdx] = CANCELLED_SENTINEL
         return { ...m, actionsApplied: cancelled, actionErrors: errs }
       }),
     )
