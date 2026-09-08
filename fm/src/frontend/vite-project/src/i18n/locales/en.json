@@ -199,6 +199,8 @@
     "appliedShort": "Applied",
     "cancelled": "Cancelled",
     "removeFile": "Remove",
+    "truncated": "Older messages were trimmed to fit context",
+    "dropHint": "Release to attach",
     "action": {
       "rename": "Rename",
       "organize": "Move to folder",

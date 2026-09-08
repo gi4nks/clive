@@ -83,6 +83,12 @@ describe('validateChatAction', () => {
     const r = validateChatAction({ type: 'organize', file: '/home/u/dir/a.txt', dstFolder: 'docs' }, ctx)
     expect(r.ok).toBe(true)
   })
+
+  it('rejects create when the target file already exists', () => {
+    const r = validateChatAction({ type: 'create', file: '/home/u/dir/notes.md', content: 'x' }, { ...ctx, existingNames: ['notes.md'] })
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.error).toMatch(/already exists/i)
+  })
 })
 
 describe('trimHistory', () => {
@@ -120,9 +126,10 @@ describe('buildChatPrompt', () => {
   })
 
   it('prompt includes history', () => {
-    const { prompt } = buildChatPrompt({ currentDir: '/d', dirListing: '', fileContext: '' }, [{ role: 'user', content: 'prev' }], 'next')
+    const { prompt, truncated } = buildChatPrompt({ currentDir: '/d', dirListing: '', fileContext: '' }, [{ role: 'user', content: 'prev' }], 'next')
     expect(prompt).toContain('prev')
     expect(prompt).toContain('next')
+    expect(truncated).toBe(false)
   })
 })
 

@@ -111,6 +111,7 @@ export function validateChatAction(a: ChatAction, ctx: ValidateCtx): ValidatedAc
       const name = a.file.slice(a.file.lastIndexOf('/') + 1)
       const chk = validateNewName(name)
       if (!chk.ok) return { ok: false, error: chk.reason ?? 'invalid name' }
+      if (ctx.existingNames.includes(chk.name!)) return { ok: false, error: 'file already exists' }
       const blocked = guardBlocks(a.file, ctx)
       if (blocked) return { ok: false, error: blocked }
       return { ok: true, action: { ...a, file: `${ctx.currentDir}/${chk.name}` } }
@@ -171,8 +172,8 @@ export interface ChatPromptCtx {
   fileContext: string
 }
 
-export function buildChatPrompt(ctx: ChatPromptCtx, history: ChatMessage[], userMsg: string): { system: string; prompt: string } {
-  const { kept } = trimHistory(history)
+export function buildChatPrompt(ctx: ChatPromptCtx, history: ChatMessage[], userMsg: string): { system: string; prompt: string; truncated: boolean } {
+  const { kept, truncated } = trimHistory(history)
   const parts: string[] = [
     `Current directory: ${ctx.currentDir}`,
     ctx.dirListing ? `\nDirectory contents:\n${ctx.dirListing}` : '',
@@ -184,5 +185,5 @@ export function buildChatPrompt(ctx: ChatPromptCtx, history: ChatMessage[], user
     '',
     'Assistant:',
   ]
-  return { system: CHAT_SYSTEM_PROMPT, prompt: parts.filter(Boolean).join('\n') }
+  return { system: CHAT_SYSTEM_PROMPT, prompt: parts.filter(Boolean).join('\n'), truncated }
 }

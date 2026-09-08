@@ -17,8 +17,9 @@ import { ChatDrawer } from './ChatDrawer.js'
 
 // Minimal fake controller matching ChatController shape.
 const makeAI = (over: Partial<any> = {}) => ({
-  messages: [], streaming: false, busy: false, error: '', addedFiles: [],
+  messages: [], streaming: false, busy: false, error: '', addedFiles: [], historyTruncated: false,
   send: vi.fn(), abort: vi.fn(), applyAction: vi.fn(), cancelAction: vi.fn(),
+  validateAction: vi.fn(() => ({ ok: true })),
   reset: vi.fn(), addFile: vi.fn(), removeAdded: vi.fn(), ...over,
 })
 
@@ -63,5 +64,34 @@ describe('ChatDrawer', () => {
     render(<ChatDrawer open={true} onClose={vi.fn()} ai={ai as never} />)
     expect(screen.getByText(/chat\.cancelled/)).toBeInTheDocument()
     expect(screen.queryByText(/chat-cancelled/)).not.toBeInTheDocument()
+  })
+
+  it('calls ai.addFile for each dropped file', () => {
+    const ai = makeAI()
+    render(<ChatDrawer open={true} onClose={vi.fn()} ai={ai as never} />)
+    const dropTarget = screen.getByTestId('chat-drop-target')
+    const file = { name: 'x.txt', size: 1, lastModified: 0, path: '/tmp/x.txt' }
+    fireEvent.drop(dropTarget, { dataTransfer: { files: [file] } })
+    expect(ai.addFile).toHaveBeenCalledWith(expect.objectContaining({ name: 'x.txt', path: '/tmp/x.txt' }))
+  })
+
+  it('renders guard-blocked card disabled with hint (no Apply click required)', () => {
+    const ai = makeAI({
+      validateAction: vi.fn().mockReturnValue({ ok: false, error: 'system location' }),
+      messages: [
+        { role: 'user', content: 'del' },
+        { role: 'assistant', content: 'ok', actions: [{ type: 'trash', file: '/Applications' }] },
+      ],
+    })
+    render(<ChatDrawer open={true} onClose={vi.fn()} ai={ai as never} />)
+    expect(screen.getByText(/system location/i)).toBeInTheDocument()
+    const applyBtn = screen.getByRole('button', { name: /apply/i })
+    expect(applyBtn).toBeDisabled()
+  })
+
+  it('shows truncation chip when ai.historyTruncated is true', () => {
+    const ai = makeAI({ historyTruncated: true })
+    render(<ChatDrawer open={true} onClose={vi.fn()} ai={ai as never} />)
+    expect(screen.getByText(/chat.truncated|trimmed|rimossi/i)).toBeInTheDocument()
   })
 })

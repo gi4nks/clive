@@ -45,6 +45,7 @@ export function useChat(deps: UseChatDeps) {
   const [streaming, setStreaming] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const [historyTruncated, setHistoryTruncated] = useState(false)
   const abortRef = useRef<AbortController | null>(null)
   // Re-entrancy guards: `streaming` state is one render behind, so in-flight
   // facts live in refs (send overlap + Apply double-click).
@@ -61,6 +62,7 @@ export function useChat(deps: UseChatDeps) {
     setMessages([])
     setAddedFiles([])
     setError('')
+    setHistoryTruncated(false)
   }, [])
 
   const send = useCallback(
@@ -87,7 +89,7 @@ export function useChat(deps: UseChatDeps) {
         const usable = caps.supportsVision ? attached : attached.filter((f) => !isImageName(f.name, f.extension))
         const ctx = usable.length ? renderBudgeted(budgetFiles(await collectFileContents(usable))) : ''
         const dirListing = renderDirListing(d.entries)
-        const { system, prompt } = buildChatPrompt({ currentDir: d.currentPath, dirListing, fileContext: ctx }, messages, text)
+        const { system, prompt, truncated } = buildChatPrompt({ currentDir: d.currentPath, dirListing, fileContext: ctx }, messages, text)
         const stream = d.streamChat ?? streamChat
         let raw = ''
         for await (const chunk of stream({ model: d.model, system, prompt, signal: ctrl.signal })) {
@@ -116,6 +118,7 @@ export function useChat(deps: UseChatDeps) {
           next[next.length - 1] = patched
           return next
         })
+        if (truncated) setHistoryTruncated(true)
       } catch (e) {
         if (!ctrl.signal.aborted) setError(String(e))
         setMessages((prev) => {
@@ -215,16 +218,32 @@ export function useChat(deps: UseChatDeps) {
     )
   }, [])
 
+  const validateAction = useCallback(
+    (msgIdx: number, actIdx: number): { ok: true } | { ok: false; error: string } => {
+      const a = messages[msgIdx]?.actions?.[actIdx]
+      if (!a) return { ok: false, error: 'unknown action' }
+      const v = validateChatAction(a, {
+        currentDir: depsRef.current.currentPath,
+        existingNames: depsRef.current.entries.map((e) => e.name),
+        guardOn: depsRef.current.guardOn,
+      })
+      return v.ok ? { ok: true } : { ok: false, error: v.error }
+    },
+    [messages],
+  )
+
   return {
     messages,
     streaming,
     busy,
     error,
+    historyTruncated,
     addedFiles,
     send,
     abort: () => abortRef.current?.abort(),
     applyAction,
     cancelAction,
+    validateAction,
     reset,
     addFile,
     removeAdded,

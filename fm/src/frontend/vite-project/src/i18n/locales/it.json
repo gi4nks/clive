@@ -199,6 +199,8 @@
     "appliedShort": "Applicata",
     "cancelled": "Annullata",
     "removeFile": "Rimuovi",
+    "truncated": "Messaggi vecchi rimossi per rispettare il limite di contesto",
+    "dropHint": "Rilascia per allegare",
     "action": {
       "rename": "Rinomina",
       "organize": "Sposta in cartella",

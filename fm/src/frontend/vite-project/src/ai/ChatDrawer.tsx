@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type DragEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { ChatController } from './useChat.js'
 import { CANCELLED_SENTINEL, type ChatAction } from './chat.js'
@@ -14,6 +14,7 @@ export function ChatDrawer({ open, onClose, ai }: { open: boolean; onClose: () =
   const { t } = useTranslation()
   const [input, setInput] = useState('')
   const [copied, setCopied] = useState(false)
+  const [dragging, setDragging] = useState(false)
   const endRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -41,14 +42,53 @@ export function ChatDrawer({ open, onClose, ai }: { open: boolean; onClose: () =
     void ai.send(text)
   }
 
+  // Tauri exposes the absolute path on dropped File objects (window has
+  // dragDropEnabled:false, so HTML5 DnD reaches the webview). Tests / plain
+  // browsers have no File.path — fall back to a /drop/ pseudo-path.
+  const onDrop = (e: DragEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    setDragging(false)
+    for (const f of Array.from(e.dataTransfer.files)) {
+      const path = (f as unknown as { path?: string }).path ?? `/drop/${f.name}`
+      ai.addFile({
+        name: f.name,
+        path,
+        isDir: false,
+        size: f.size,
+        modified: f.lastModified,
+        extension: f.name.includes('.') ? f.name.slice(f.name.lastIndexOf('.') + 1) : null,
+      })
+    }
+  }
+
   return (
     <div className="fixed inset-0 z-40 flex justify-end">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} aria-hidden />
-      <div className="relative z-10 flex h-full w-[420px] flex-col border-l border-base-300 bg-base-100 shadow-2xl">
+      <div
+        className="relative z-10 flex h-full w-[420px] flex-col border-l border-base-300 bg-base-100 shadow-2xl"
+        data-testid="chat-drop-target"
+        onDragOver={(e) => {
+          e.preventDefault()
+          setDragging(true)
+        }}
+        onDragLeave={() => setDragging(false)}
+        onDrop={onDrop}
+      >
+        {dragging && (
+          <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center rounded-l-xl border-2 border-dashed border-primary bg-primary/5 text-xs font-semibold text-primary">
+            {t('chat.dropHint')}
+          </div>
+        )}
         <div className="flex items-center justify-between border-b border-base-300 px-4 py-3">
           <span className="text-sm font-semibold">{t('chat.title')}</span>
           <button className="btn btn-ghost btn-xs" onClick={onClose} aria-label={t('common.close')}>✕</button>
         </div>
+
+        {ai.historyTruncated && (
+          <div className="mx-3 mt-2 rounded-md border border-warning/40 bg-warning/10 px-2 py-1 text-[11px] text-warning">
+            ⚠ {t('chat.truncated')}
+          </div>
+        )}
 
         <div className="scroll-area flex-1 overflow-y-auto p-3 text-sm">
           {ai.error && (
@@ -88,6 +128,7 @@ export function ChatDrawer({ open, onClose, ai }: { open: boolean; onClose: () =
                 <ActionCard
                   key={j}
                   a={a}
+                  validation={ai.validateAction(i, j)}
                   applied={m.actionsApplied?.[j]}
                   error={m.actionErrors?.[j]}
                   onApply={() => void ai.applyAction(i, j)}
@@ -141,12 +182,14 @@ export function ChatDrawer({ open, onClose, ai }: { open: boolean; onClose: () =
 
 function ActionCard({
   a,
+  validation,
   applied,
   error,
   onApply,
   onCancel,
 }: {
   a: ChatAction
+  validation: { ok: true } | { ok: false; error: string }
   applied?: boolean
   error?: string | null
   onApply: () => void
@@ -157,18 +200,20 @@ function ActionCard({
   const summary = describeAction(a)
   const isApplied = !!applied && !error
   const isCancelled = !!applied && error === CANCELLED_SENTINEL
+  const blocked = !validation.ok && !isApplied && !isCancelled
   return (
     <div className="mt-1 rounded-lg border border-base-300 bg-base-200/50 p-2 text-xs">
       <div className="mb-1 font-semibold">
         {iconFor(a.type)} {label}
       </div>
       <div className="mb-1 break-words opacity-80">{summary}</div>
-      {error && !isCancelled && <div className="mb-1 text-error">{error}</div>}
       {isApplied && <div className="text-success">✓ {t('chat.applied')}</div>}
       {isCancelled && <div className="opacity-60">— {t('chat.cancelled')}</div>}
-      {!applied && !error && (
+      {blocked && <div className="mb-1 text-warning">{validation.error}</div>}
+      {!blocked && !isApplied && !isCancelled && error && <div className="mb-1 text-error">{error}</div>}
+      {!isApplied && !isCancelled && (
         <div className="flex gap-1">
-          <button className="btn btn-primary btn-xs" onClick={onApply}>
+          <button className="btn btn-primary btn-xs" disabled={blocked} onClick={onApply}>
             {t('common.apply')}
           </button>
           <button className="btn btn-ghost btn-xs" onClick={onCancel}>

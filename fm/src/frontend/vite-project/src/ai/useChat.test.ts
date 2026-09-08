@@ -259,6 +259,41 @@ describe('useChat', () => {
     expect(result.current.messages[1].actionsApplied?.[0]).toBe(true)
   })
 
+  it('validateAction pre-validates a proposed action without touching the fs', async () => {
+    vi.mocked(runtime.streamChat).mockReturnValue(
+      fakeStream(['<<<ACTIONS>>>\n{"actions":[{"type":"create","file":"/d/note.md","content":"hi"}]}\n<<<END>>>'])() as never,
+    )
+    const d = {
+      ...deps(),
+      entries: [{ name: 'note.md', path: '/d/note.md', isDir: false, size: 1, modified: 0, extension: 'md' }] as never[],
+    }
+    const { result } = renderHook(() => useChat(d))
+    await act(async () => {
+      await result.current.send('go')
+    })
+    const v = result.current.validateAction(1, 0)
+    expect(v.ok).toBe(false)
+    if (!v.ok) expect(v.error).toMatch(/already exists/i)
+    expect(fsBridge.writeFile).not.toHaveBeenCalled()
+  })
+
+  it('sets historyTruncated when the conversation overflows and clears it on reset', async () => {
+    vi.mocked(runtime.streamChat).mockReturnValue(fakeStream(['ok'])() as never)
+    const { result } = renderHook(() => useChat(deps()))
+    await act(async () => {
+      await result.current.send('x'.repeat(13000))
+    })
+    expect(result.current.historyTruncated).toBe(false)
+    await act(async () => {
+      await result.current.send('again')
+    })
+    expect(result.current.historyTruncated).toBe(true)
+    act(() => {
+      result.current.reset()
+    })
+    expect(result.current.historyTruncated).toBe(false)
+  })
+
   it('reset() aborts an in-flight stream', async () => {
     let sig: AbortSignal | undefined
     vi.mocked(runtime.streamChat).mockImplementation(
