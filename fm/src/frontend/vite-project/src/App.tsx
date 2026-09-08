@@ -39,6 +39,9 @@ import type { WidgetCtx } from './widgetTypes'
 import { useAppConfig, getAppConfig, initAppConfig, type AppConfig } from './settings/appConfig'
 import { useAi } from './ai/useAi'
 import { AiOverlay } from './ai/AiOverlay'
+import { useChat } from './ai/useChat'
+import { ChatDrawer } from './ai/ChatDrawer'
+import { fullModelId } from './ai/settings'
 import { SettingsModal } from './settings/SettingsModal'
 import { TransferPicker } from './TransferPicker'
 import { transferBatch } from './transfer'
@@ -235,6 +238,7 @@ export default function App() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [newFolderName, setNewFolderName] = useState('')
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [chatOpen, setChatOpen] = useState(false)
   const [transferReq, setTransferReq] = useState<{ mode: 'copy' | 'move'; paths: string[] } | null>(null)
   const [pasteInFlight, setPasteInFlight] = useState(false)
   const loadedRef = useRef(false)
@@ -548,6 +552,25 @@ export default function App() {
     () => sortedEntries.filter((e) => selected.has(e.path)),
     [sortedEntries, selected],
   )
+
+  const chat = useChat({
+    currentPath,
+    entries: visibleEntries,
+    selected: selectedEntries,
+    model: fullModelId(ai.sel),
+    guardOn: cfg.guardSystemLocations,
+    setStatus: handleSetStatus,
+    refresh: () => refresh(currentPath),
+  })
+
+  // Chat drawer and AI overlay are mutually exclusive.
+  useEffect(() => {
+    if (chatOpen) ai.cancel()
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- ai.cancel only closes over stable setters
+  }, [chatOpen])
+  useEffect(() => {
+    if (ai.busy || ai.hasPreview) setChatOpen(false)
+  }, [ai.busy, ai.hasPreview])
 
   const handleRename = useCallback(
     async (file: FileEntry, newName: string) => {
@@ -1062,6 +1085,10 @@ export default function App() {
         setSelected(new Set(visibleEntries.map((x) => x.path)))
         return
       }
+      if (meta && e.shiftKey && lower === 'c') {
+        e.preventDefault()
+        return setChatOpen((o) => !o)
+      }
       if (meta && lower === 'c' && selected.size) {
         e.preventDefault()
         return await handleCopyCut('copy')
@@ -1422,8 +1449,9 @@ export default function App() {
           </div>
         </div>
 
-        <StatusBar ctx={widgetCtx} />
+        <StatusBar ctx={widgetCtx} chatOpen={chatOpen} onChat={() => setChatOpen((o) => !o)} />
       <AiOverlay ai={ai} />
+      <ChatDrawer open={chatOpen} onClose={() => setChatOpen(false)} ai={chat} />
       <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />
       {sidebarAdd && (
         <Modal title={t('sidebar.add')} onClose={() => setSidebarAdd(null)}>

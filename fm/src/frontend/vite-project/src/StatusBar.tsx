@@ -12,7 +12,7 @@ function groupSorted(placement: Placement, ctx: WidgetCtx): Widget[] {
     .sort((a, b) => a.order - b.order)
 }
 
-export function StatusBar({ ctx }: { ctx: WidgetCtx }) {
+export function StatusBar({ ctx, chatOpen = false, onChat }: { ctx: WidgetCtx; chatOpen?: boolean; onChat?: () => void }) {
   const { t } = useTranslation()
   const barRef = useRef<HTMLDivElement>(null)
   const [narrow, setNarrow] = useState(false)
@@ -55,6 +55,18 @@ export function StatusBar({ ctx }: { ctx: WidgetCtx }) {
 
       {/* right */}
       <div className="flex shrink-0 items-center gap-0.5">
+        {onChat && (
+          <button
+            data-bar-control
+            className={`btn btn-ghost btn-xs !min-h-0 h-5 px-1 leading-none ${chatOpen ? 'btn-active' : ''}`}
+            title={t('chat.title')}
+            aria-label={t('chat.title')}
+            aria-pressed={chatOpen}
+            onClick={onChat}
+          >
+            💬
+          </button>
+        )}
         {overflowable.length > 0 && (
           <Popover
             align="right"
