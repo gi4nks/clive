@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { extractActions, validateChatAction } from './chat.js'
+import { extractActions, validateChatAction, trimHistory, buildChatPrompt, CHAT_SYSTEM_PROMPT, type ChatMessage } from './chat.js'
+import { renderDirListing } from './budget.js'
 
 describe('extractActions', () => {
   it('returns raw text when no actions block', () => {
@@ -81,5 +82,64 @@ describe('validateChatAction', () => {
   it('accepts organize into a new subfolder', () => {
     const r = validateChatAction({ type: 'organize', file: '/home/u/dir/a.txt', dstFolder: 'docs' }, ctx)
     expect(r.ok).toBe(true)
+  })
+})
+
+describe('trimHistory', () => {
+  const mk = (n: number): ChatMessage[] => Array.from({ length: n }, (_, i) => ({ role: i % 2 ? 'assistant' : 'user', content: `m${i}_${'x'.repeat(100)}` }))
+
+  it('returns all if under budget', () => {
+    const { kept, truncated } = trimHistory(mk(3), 10_000)
+    expect(kept).toHaveLength(3)
+    expect(truncated).toBe(false)
+  })
+
+  it('preserves first user message when trimming', () => {
+    const { kept, truncated } = trimHistory(mk(20), 500)
+    expect(truncated).toBe(true)
+    expect(kept[0].role).toBe('user')
+    expect(kept[0].content).toMatch(/^m0_/)
+  })
+
+  it('drops middle turns, keeps recent', () => {
+    const { kept } = trimHistory(mk(20), 1000)
+    expect(kept[kept.length - 1].content).toMatch(/^m19_/)
+  })
+})
+
+describe('buildChatPrompt', () => {
+  it('includes system prompt with ACTIONS marker instructions', () => {
+    const { system } = buildChatPrompt({ currentDir: '/d', dirListing: 'a.txt\nb.txt', fileContext: '' }, [], 'hi')
+    expect(system).toContain(CHAT_SYSTEM_PROMPT.slice(0, 20))
+    expect(system).toContain('ACTIONS')
+  })
+
+  it('prompt includes dir listing', () => {
+    const { prompt } = buildChatPrompt({ currentDir: '/d', dirListing: 'secret.txt', fileContext: '' }, [], 'hi')
+    expect(prompt).toContain('secret.txt')
+  })
+
+  it('prompt includes history', () => {
+    const { prompt } = buildChatPrompt({ currentDir: '/d', dirListing: '', fileContext: '' }, [{ role: 'user', content: 'prev' }], 'next')
+    expect(prompt).toContain('prev')
+    expect(prompt).toContain('next')
+  })
+})
+
+describe('renderDirListing', () => {
+  it('lists file names and marks folders', () => {
+    const s = renderDirListing([
+      { name: 'a.txt', path: '/d/a.txt', size: 10, modified: 0, isDir: false },
+      { name: 'sub', path: '/d/sub', size: 0, modified: 0, isDir: true },
+    ] as never)
+    expect(s).toContain('a.txt')
+    expect(s).toMatch(/sub\s*\/?/)
+  })
+
+  it('truncates long listings with ellipsis', () => {
+    const many = Array.from({ length: 500 }, (_, i) => ({ name: `f${i}`, path: `/d/f${i}`, size: 1, modified: 0, isDir: false }))
+    const s = renderDirListing(many as never, 100)
+    expect(s.split('\n').length).toBeLessThanOrEqual(102)
+    expect(s).toMatch(/\+ \d+ more|\.\.\./)
   })
 })

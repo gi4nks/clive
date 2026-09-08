@@ -7,6 +7,8 @@
  * (the caller supplies raw file text via `read_text_file`).
  */
 
+import type { FileEntry } from '../api.js'
+
 export interface BudgetOptions {
   /** Max bytes taken from a single file. Default 24 KB. */
   perFileBytes?: number
@@ -124,4 +126,12 @@ export function renderBudgeted(blocks: BudgetedFile[]): string {
       return `### ${b.name}${meta}\n${b.body}`
     })
     .join('\n\n')
+}
+
+/** Compact directory listing (names only, folders marked). Truncates past maxEntries. */
+export function renderDirListing(entries: FileEntry[], maxEntries = 200): string {
+  const lines = entries.slice(0, maxEntries).map((e) => (e.isDir ? `${e.name}/` : e.name))
+  const remaining = entries.length - Math.min(entries.length, maxEntries)
+  if (remaining > 0) lines.push(`... + ${remaining} more`)
+  return lines.join('\n')
 }

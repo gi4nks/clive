@@ -119,3 +119,67 @@ export function validateChatAction(a: ChatAction, ctx: ValidateCtx): ValidatedAc
     }
   }
 }
+
+export interface ChatMessage {
+  role: 'user' | 'assistant'
+  content: string
+  actions?: ChatAction[]
+}
+
+export const MAX_HISTORY_CHARS = 12_000
+
+export const CHAT_SYSTEM_PROMPT = [
+  'You are the AI assistant of Clive, a file manager.',
+  'Answer in the language the user writes in.',
+  'If the user asks you to perform a file operation (rename, move, create, trash),',
+  'propose it at the END of your reply using ONLY this exact format:',
+  '',
+  ACTIONS_OPEN,
+  '{"actions":[{"type":"rename","file":"/abs/path","newName":"b.txt"}]}',
+  ACTIONS_CLOSE,
+  '',
+  'Allowed types: rename (file,newName), organize (file,dstFolder), create (file,content), trash (file).',
+  'Nessuna azione viene eseguita senza conferma esplicita dell\'utente.',
+  'If the user does not ask for an operation, do not emit the block.',
+].join('\n')
+
+export function trimHistory(history: ChatMessage[], maxChars: number = MAX_HISTORY_CHARS): { kept: ChatMessage[]; truncated: boolean } {
+  const size = (arr: ChatMessage[]) => arr.reduce((s, m) => s + m.content.length + 20, 0)
+  if (size(history) <= maxChars) return { kept: history, truncated: false }
+
+  const first = history[0]
+  const rest = history.slice(1)
+  const keptRest: ChatMessage[] = []
+  let budget = maxChars - (first ? first.content.length + 20 : 0)
+  // Walk from the END and accumulate; then reverse.
+  for (let i = rest.length - 1; i >= 0; i--) {
+    const m = rest[i]
+    if (m.content.length + 20 > budget) break
+    keptRest.unshift(m)
+    budget -= m.content.length + 20
+  }
+  const kept = first ? [first, ...keptRest] : keptRest
+  return { kept, truncated: kept.length < history.length }
+}
+
+export interface ChatPromptCtx {
+  currentDir: string
+  dirListing: string
+  fileContext: string
+}
+
+export function buildChatPrompt(ctx: ChatPromptCtx, history: ChatMessage[], userMsg: string): { system: string; prompt: string } {
+  const { kept } = trimHistory(history)
+  const parts: string[] = [
+    `Current directory: ${ctx.currentDir}`,
+    ctx.dirListing ? `\nDirectory contents:\n${ctx.dirListing}` : '',
+    ctx.fileContext ? `\nSelected/attached file contents:\n${ctx.fileContext}` : '',
+    '',
+    'Conversation so far:',
+    ...kept.map((m) => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`),
+    `User: ${userMsg}`,
+    '',
+    'Assistant:',
+  ]
+  return { system: CHAT_SYSTEM_PROMPT, prompt: parts.filter(Boolean).join('\n') }
+}
