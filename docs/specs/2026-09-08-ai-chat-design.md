@@ -117,8 +117,8 @@ Ricostruito **ogni turno**, in ordine:
 ### 5.2 Vision gate
 
 Per immagini (PNG/JPG/GIF/WebP/HEIC) nel contesto:
-- Se il modello corrente ha `vision: true` (da `capabilities.ts`) → inviate come contenuti image nel messaggio.
-- Altrimenti → omesse con nota `"immagine ignorata (modello senza visione)"` (stessa UX Summarize).
+- Se il modello corrente ha `vision: true` (da `capabilities.ts`) → inviate come contenuti image nel messaggio. **v1: DEFERRED — `streamChat` è text-only. Le immagini vengono trattate come gli altri file (metadata + `readTextFile` che fallisce silenziosamente). Solo il ramo "non-vision → nota" è attivo in v1. V1.1: estendere `runtime.ts` con supporto `image_url` nel formato multimodale OpenAI.**
+- Altrimenti → omesse con nota `"immagine ignorata (modello senza visione)"` (stessa UX Summarize). **✓ Implementato e testato in v1.**
 
 ### 5.3 Trimming cronologia multi-turno
 
@@ -215,9 +215,10 @@ Tutto il riuso: `runtime.ts` (`getModel`, `streamAssistant`, `checkHealth`), `bu
 
 ## 12. Criteri di accettazione
 
-1. L'utente apre il drawer chat, digita una domanda sui file selezionati → riceve risposta **in streaming**.
-2. Se il modello propone un'azione, appare una card con Apply/Annulla; Apply esegue l'operazione (rename/sposta/crea/cestina) e la card diventa verde con `✓`.
-3. Senza Apply, **niente** viene toccato su disco.
-4. Un'azione su path protetto (con guard attivo) mostra card grigia non applicabile.
-5. Dopo 20+ turni con molti file in contesto, la chat resta funzionante (trimming FIFO + chip di avviso).
-6. Tutti i test pre-esistenti (124 TS + 9 Rust) passano; build release OK.
+1. L'utente apre il drawer chat, digita una domanda sui file selezionati → riceve risposta **in streaming**. ✓ v1.
+2. Se il modello propone un'azione, appare una card con Apply/Annulla; Apply esegue l'operazione (rename/sposta/crea/cestina) e la card diventa verde con `✓`. ✓ v1.
+3. Senza Apply, **niente** viene toccato su disco. ✓ v1 (test `useChat.test.ts` "does not execute anything without applyAction" + `ChatDrawer.test.tsx` guard-blocked).
+4. Un'azione su path protetto (con guard attivo) mostra card grigia non applicabile. ✓ v1 (fix wave I-3: `validateAction` espone la pre-validazione al render).
+5. Dopo 20+ turni con molti file in contesto, la chat resta funzionante (trimming FIFO + chip di avviso). ✓ v1 (fix wave I-4).
+6. Tutti i test pre-esistenti (124 TS + 9 Rust) passano; build release OK. ✓ v1: suite ora a **173/173 TS** + 15/15 Rust, `make build` verde.
+7. **DEFERRED → v1.1** — immagini passate al modello quando il provider ha vision capability (vedi §5.2). v1 usa solo il ramo "nota di skip".
