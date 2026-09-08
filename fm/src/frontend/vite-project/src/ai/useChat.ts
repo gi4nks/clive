@@ -45,6 +45,10 @@ export function useChat(deps: UseChatDeps) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const abortRef = useRef<AbortController | null>(null)
+  // Re-entrancy guards: `streaming` state is one render behind, so in-flight
+  // facts live in refs (send overlap + Apply double-click).
+  const streamingRef = useRef(false)
+  const inFlightActions = useRef<Set<string>>(new Set())
 
   const addFile = useCallback(
     (f: FileEntry) => setAddedFiles((prev) => (prev.some((p) => p.path === f.path) ? prev : [...prev, f])),
@@ -52,6 +56,7 @@ export function useChat(deps: UseChatDeps) {
   )
   const removeAdded = useCallback((path: string) => setAddedFiles((prev) => prev.filter((p) => p.path !== path)), [])
   const reset = useCallback(() => {
+    abortRef.current?.abort()
     setMessages([])
     setAddedFiles([])
     setError('')
@@ -59,7 +64,8 @@ export function useChat(deps: UseChatDeps) {
 
   const send = useCallback(
     async (text: string, extraFiles: FileEntry[] = []) => {
-      if (!text.trim()) return
+      if (!text.trim() || streamingRef.current) return
+      streamingRef.current = true
       setError('')
       const userMsg: ChatMessageState = { role: 'user', content: text }
       setMessages((prev) => [...prev, userMsg])
@@ -87,24 +93,26 @@ export function useChat(deps: UseChatDeps) {
           raw += chunk
           setMessages((prev) => {
             const next = [...prev]
-            const last = { ...next[next.length - 1] }
-            last.content = raw
-            next[next.length - 1] = last
+            const last = next[next.length - 1]
+            if (!last?.streaming) return prev
+            next[next.length - 1] = { ...last, content: raw }
             return next
           })
         }
         const { text: clean, actions } = extractActions(raw)
         setMessages((prev) => {
           const next = [...prev]
-          const last = { ...next[next.length - 1] }
-          last.content = clean
-          last.actions = actions
-          last.streaming = false
+          const last = next[next.length - 1]
+          if (!last?.streaming) return prev
+          const patched = { ...last }
+          patched.content = clean
+          patched.actions = actions
+          patched.streaming = false
           if (actions.length) {
-            last.actionsApplied = actions.map(() => false)
-            last.actionErrors = actions.map(() => null)
+            patched.actionsApplied = actions.map(() => false)
+            patched.actionErrors = actions.map(() => null)
           }
-          next[next.length - 1] = last
+          next[next.length - 1] = patched
           return next
         })
       } catch (e) {
@@ -117,6 +125,7 @@ export function useChat(deps: UseChatDeps) {
           return next
         })
       } finally {
+        streamingRef.current = false
         setStreaming(false)
         setBusy(false)
         abortRef.current = null
@@ -127,10 +136,13 @@ export function useChat(deps: UseChatDeps) {
 
   const applyAction = useCallback(
     async (msgIdx: number, actIdx: number) => {
+      const key = `${msgIdx}:${actIdx}`
+      if (inFlightActions.current.has(key)) return
       const d = depsRef.current
       const msg = messages[msgIdx]
       const action = msg?.actions?.[actIdx]
       if (!action) return
+      inFlightActions.current.add(key)
       const patch = (fn: (s: ChatMessageState) => ChatMessageState) =>
         setMessages((prev) => prev.map((m, i) => (i === msgIdx ? fn(m) : m)))
       const setErrorAt = (text: string) =>
@@ -139,18 +151,17 @@ export function useChat(deps: UseChatDeps) {
           errs[actIdx] = text
           return { ...m, actionErrors: errs }
         })
-
-      const v = validateChatAction(action, {
-        currentDir: d.currentPath,
-        existingNames: d.entries.map((e) => e.name),
-        guardOn: d.guardOn,
-      })
-      if (!v.ok) {
-        setErrorAt(v.error)
-        d.setStatus(v.error, 'error')
-        return
-      }
       try {
+        const v = validateChatAction(action, {
+          currentDir: d.currentPath,
+          existingNames: d.entries.map((e) => e.name),
+          guardOn: d.guardOn,
+        })
+        if (!v.ok) {
+          setErrorAt(v.error)
+          d.setStatus(v.error, 'error')
+          return
+        }
         const a = v.action
         let failures: { op: string; error: string }[] = []
         if (a.type === 'rename') {
@@ -183,6 +194,8 @@ export function useChat(deps: UseChatDeps) {
         const msg2 = String(e)
         setErrorAt(msg2)
         d.setStatus(msg2, 'error')
+      } finally {
+        inFlightActions.current.delete(key)
       }
     },
     [messages],

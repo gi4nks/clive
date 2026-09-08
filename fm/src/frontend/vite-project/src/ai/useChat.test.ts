@@ -205,4 +205,72 @@ describe('useChat', () => {
     expect(result.current.messages[1].actionErrors?.[0]).toContain('system')
     expect(d.setStatus).toHaveBeenCalledWith(expect.stringContaining('system'), 'error')
   })
+
+  it('drops a second send while the first stream is still open', async () => {
+    vi.mocked(runtime.streamChat).mockImplementation(
+      (async function* () {
+        yield 'a'
+        await new Promise((r) => setTimeout(r, 20))
+        yield 'b'
+      }) as never,
+    )
+    const { result } = renderHook(() => useChat(deps()))
+    await act(async () => {
+      const p1 = result.current.send('first')
+      const p2 = result.current.send('second')
+      await Promise.all([p1, p2])
+    })
+    expect(runtime.streamChat).toHaveBeenCalledTimes(1)
+    expect(result.current.messages.length).toBe(2)
+    expect(result.current.messages[0].content).toBe('first')
+    expect(result.current.messages[1].content).toBe('ab')
+    expect(result.current.streaming).toBe(false)
+  })
+
+  it('applyAction ignores a double-click: fs runs once', async () => {
+    vi.mocked(runtime.streamChat).mockReturnValue(streamTrash('/d/a') as never)
+    const { result } = renderHook(() => useChat(deps()))
+    await act(async () => {
+      await result.current.send('go')
+    })
+    vi.mocked(fsBridge.moveToTrash).mockImplementationOnce(
+      () => new Promise((r) => setTimeout(r, 10)),
+    )
+    await act(async () => {
+      const p1 = result.current.applyAction(1, 0)
+      const p2 = result.current.applyAction(1, 0)
+      await Promise.all([p1, p2])
+    })
+    expect(fsBridge.moveToTrash).toHaveBeenCalledTimes(1)
+    expect(result.current.messages[1].actionsApplied?.[0]).toBe(true)
+  })
+
+  it('reset() aborts an in-flight stream', async () => {
+    let sig: AbortSignal | undefined
+    vi.mocked(runtime.streamChat).mockImplementation(
+      (async function* (args: { signal?: AbortSignal }) {
+        sig = args.signal
+        yield 'a'
+        await new Promise((r) => setTimeout(r, 30))
+        if (args.signal?.aborted) throw new Error('abort')
+        yield 'b'
+      }) as never,
+    )
+    const { result } = renderHook(() => useChat(deps()))
+    let inflight: Promise<void> | undefined
+    await act(async () => {
+      inflight = result.current.send('go')
+      await new Promise((r) => setTimeout(r, 5))
+    })
+    expect(result.current.streaming).toBe(true)
+    act(() => {
+      result.current.reset()
+    })
+    expect(sig?.aborted).toBe(true)
+    await act(async () => {
+      await inflight
+    })
+    expect(result.current.messages.length).toBe(0)
+    expect(result.current.streaming).toBe(false)
+  })
 })
