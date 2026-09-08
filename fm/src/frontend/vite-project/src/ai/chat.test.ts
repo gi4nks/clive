@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { extractActions } from './chat.js'
+import { extractActions, validateChatAction } from './chat.js'
 
 describe('extractActions', () => {
   it('returns raw text when no actions block', () => {
@@ -40,5 +40,46 @@ describe('extractActions', () => {
     const raw = `msg\n<<<actions>>>\n{"actions":[{"type":"trash","file":"/x"}]}\n<<<end>>>`
     const r = extractActions(raw)
     expect(r.actions).toEqual([{ type: 'trash', file: '/x' }])
+  })
+})
+
+describe('validateChatAction', () => {
+  const ctx = { currentDir: '/home/u/dir', existingNames: ['other.txt'], guardOn: true }
+
+  it('accepts a valid rename', () => {
+    const r = validateChatAction({ type: 'rename', file: '/home/u/dir/a.txt', newName: 'b.txt' }, ctx)
+    expect(r.ok).toBe(true)
+  })
+
+  it('rejects rename with invalid name', () => {
+    const r = validateChatAction({ type: 'rename', file: '/home/u/dir/a.txt', newName: '../escape' }, ctx)
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.error).toMatch(/path|invalid/i)
+  })
+
+  it('rejects rename on protected path (guard on)', () => {
+    const r = validateChatAction({ type: 'rename', file: '/Applications', newName: 'Bar' }, ctx)
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.error).toMatch(/system|protected/i)
+  })
+
+  it('allows protected path when guard is off', () => {
+    const r = validateChatAction({ type: 'rename', file: '/Applications', newName: 'Bar' }, { ...ctx, guardOn: false })
+    expect(r.ok).toBe(true)
+  })
+
+  it('rejects trash on protected path', () => {
+    const r = validateChatAction({ type: 'trash', file: '/System' }, ctx)
+    expect(r.ok).toBe(false)
+  })
+
+  it('rejects create outside current dir', () => {
+    const r = validateChatAction({ type: 'create', file: '/etc/passwd', content: 'x' }, ctx)
+    expect(r.ok).toBe(false)
+  })
+
+  it('accepts organize into a new subfolder', () => {
+    const r = validateChatAction({ type: 'organize', file: '/home/u/dir/a.txt', dstFolder: 'docs' }, ctx)
+    expect(r.ok).toBe(true)
   })
 })

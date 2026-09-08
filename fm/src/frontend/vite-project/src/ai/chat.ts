@@ -4,6 +4,9 @@
  * unit-testable without mocking.
  */
 
+import { validateNewName } from './safety.js'
+import { isProtectedPath } from '../systemGuard.js'
+
 export const ACTIONS_OPEN = '<<<ACTIONS>>>'
 export const ACTIONS_CLOSE = '<<<END>>>'
 
@@ -58,5 +61,61 @@ export function extractActions(raw: string): ParsedActions {
     return { text: text.trimEnd(), actions }
   } catch {
     return { text: raw, actions: [] }
+  }
+}
+
+export type ValidatedAction = { ok: true; action: ChatAction } | { ok: false; error: string }
+
+export interface ValidateCtx {
+  currentDir: string
+  existingNames: string[]
+  guardOn: boolean
+}
+
+function parentOf(path: string): string {
+  const i = path.lastIndexOf('/')
+  return i > 0 ? path.slice(0, i) : '/'
+}
+
+function guardBlocks(path: string, ctx: ValidateCtx): string | null {
+  if (!ctx.guardOn) return null
+  if (isProtectedPath(path)) return 'system location (guard on)'
+  return null
+}
+
+export function validateChatAction(a: ChatAction, ctx: ValidateCtx): ValidatedAction {
+  switch (a.type) {
+    case 'rename': {
+      const blocked = guardBlocks(a.file, ctx)
+      if (blocked) return { ok: false, error: blocked }
+      const chk = validateNewName(a.newName)
+      if (!chk.ok) return { ok: false, error: chk.reason ?? 'invalid name' }
+      if (ctx.existingNames.includes(chk.name!)) return { ok: false, error: 'name already exists' }
+      return { ok: true, action: { ...a, newName: chk.name! } }
+    }
+    case 'organize': {
+      const srcBlocked = guardBlocks(a.file, ctx)
+      if (srcBlocked) return { ok: false, error: srcBlocked }
+      const chk = validateNewName(a.dstFolder)
+      if (!chk.ok) return { ok: false, error: chk.reason ?? 'invalid folder' }
+      const dst = `${ctx.currentDir}/${chk.name}`
+      const dstBlocked = guardBlocks(dst, ctx)
+      if (dstBlocked) return { ok: false, error: dstBlocked }
+      return { ok: true, action: { ...a, dstFolder: chk.name! } }
+    }
+    case 'create': {
+      if (parentOf(a.file) !== ctx.currentDir) return { ok: false, error: 'target outside current dir' }
+      const name = a.file.slice(a.file.lastIndexOf('/') + 1)
+      const chk = validateNewName(name)
+      if (!chk.ok) return { ok: false, error: chk.reason ?? 'invalid name' }
+      const blocked = guardBlocks(a.file, ctx)
+      if (blocked) return { ok: false, error: blocked }
+      return { ok: true, action: { ...a, file: `${ctx.currentDir}/${chk.name}` } }
+    }
+    case 'trash': {
+      const blocked = guardBlocks(a.file, ctx)
+      if (blocked) return { ok: false, error: blocked }
+      return { ok: true, action: a }
+    }
   }
 }
