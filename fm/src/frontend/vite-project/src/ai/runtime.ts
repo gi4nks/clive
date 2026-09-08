@@ -116,3 +116,17 @@ export async function streamAssistant(args: StreamArgs) {
     abortSignal: args.signal,
   })
 }
+
+/** Stream a chat turn and yield text chunks; abort via signal. */
+export async function* streamChat(args: StreamArgs): AsyncGenerator<string, void, unknown> {
+  const model = await getModel(args.model)
+  const result = await streamText({
+    model,
+    system: args.system,
+    prompt: args.prompt,
+    abortSignal: args.signal,
+  })
+  for await (const chunk of result.textStream) {
+    yield chunk
+  }
+}

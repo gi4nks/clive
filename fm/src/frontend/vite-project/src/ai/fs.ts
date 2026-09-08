@@ -3,7 +3,7 @@
  * IPC commands and filesystem. Kept tiny and side-effecting so the modules it
  * feeds stay testable.
  */
-import { createFolder, listDir, moveFile, readTextFile, rename as renameCmd, writeTextFile } from '../api'
+import { createFolder, deleteToTrash, listDir, moveFile, readTextFile, rename as renameCmd, writeTextFile } from '../api'
 import type { Fs } from './apply'
 import type { FileContent } from './budget'
 import type { FileEntry } from '../api'
@@ -31,6 +31,11 @@ export const fs: Fs = {
 /** Write a new file (used by "Generate content" after confirmation). */
 export async function writeFile(path: string, content: string): Promise<void> {
   await writeTextFile(path, content)
+}
+
+/** Move a path to the Trash (used by chat trash actions after confirmation). */
+export async function moveToTrash(path: string): Promise<void> {
+  await deleteToTrash(path)
 }
 
 /** Read budgeting inputs for the given entries; failures → metadata-only. */
