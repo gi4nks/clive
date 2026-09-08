@@ -1,0 +1,61 @@
+@import "tailwindcss";
+
+@plugin "daisyui" {
+  themes: light --default, dark --prefersdark, dracula, business, night, cupcake;
+}
+
+@theme {
+  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+:root {
+  color-scheme: light dark;
+}
+
+/* App-wide theming so switching data-theme recolors everything (no white flash)
+   and text scales proportionally from this root size. */
+html {
+  font-size: 15px;
+  background-color: var(--color-base-100);
+  color: var(--color-base-content);
+}
+body {
+  background-color: var(--color-base-100);
+  color: var(--color-base-content);
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body {
+  /* La pagina non deve mai scrollare: scrollano solo i pannelli interni */
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+body {
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+input,
+textarea {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+/* Contenitore scrollabile che non "catena" lo scroll al parent */
+.scroll-area {
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  min-height: 0;
+}

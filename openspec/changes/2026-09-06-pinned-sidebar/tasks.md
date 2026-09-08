@@ -1,0 +1,22 @@
+# Tasks: Collapsible pinned sidebar
+
+- [x] 1.1 `AppConfig.sidebarOpen` + `sidebar.pinned: string[]` (defaults open, []) + `normalizeConfig` coercion
+- [x] 1.2 `src/pinned.ts`: `placesFor`/`pinPath`/`unpinPath`/`reorderPinned`/`pinnedLabel`/`MAX_PINNED` (pure, tested)
+- [x] 2.1 `Sidebar.tsx`: Places group + pinned "Favourites" group (label rows, hover × unpin)
+- [x] 2.2 Collapsed **rail** (thin strip, vertical label, ▸ expand) — no per-item icons
+- [x] 2.3 Toggle button (◂/▸) + `⌘B`; `sidebarOpen` persisted via appConfig/store
+- [x] 2.4 Row click → `openSidebarItem`: folder → navigate active pane, file → `open_path`
+- [x] 3.1 "＋" → path input modal → `pinPath`
+- [x] 3.2 Drop paths onto the sidebar → pin (dedupe/cap in `pinPath`)
+- [x] 3.3 Unpin via hover ×; right-click a row → context menu (Open, Reveal, Copy path, Pin/Unpin)
+- [x] 3.4 Reorder pinned within list via drag (`text/x-pin`)
+- [x] 3.5 File/folder context menu gained a "Pin to Sidebar" / "Unpin from Sidebar" toggle
+- [x] 4.1 Drop a selection onto a pinned/place **folder** row → `transferBatch` into it
+- [x] 4.2 Drop onto a pinned **file** row → target its parent folder (`parentOf`)
+- [x] 5.1 `sidebar.*` strings in `en.json`/`it.json`; i18n coverage guard green
+- [x] 5.2 `role=navigation` + `aria-label`s, toggle `aria-label`s
+- [x] 6.1 Unit `pinned.test.ts` (places/dedupe/cap/reorder/label)
+- [x] 6.2 Component `Sidebar.test.tsx` (rail+expand, navigate, add/unpin, drop-to-pin, right-click → onRowContext for Places+Favourites)
+- [x] 6.3 build + lint + `test` + `openspec validate --strict`
+- [ ] 6.4 Manual acceptance (pin file+folder, rail collapse, ⌘B, reorder, drop-to-transfer, right-click menus)
+- [x] 6.5 Per-pane "Go to" list includes pinned favourites

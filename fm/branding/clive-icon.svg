@@ -1,0 +1,50 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#6366f1"/>
+      <stop offset="0.5" stop-color="#7c3aed"/>
+      <stop offset="1" stop-color="#4338ca"/>
+    </linearGradient>
+    <radialGradient id="gloss" cx="0.3" cy="0.22" r="0.7">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.35"/>
+      <stop offset="0.6" stop-color="#ffffff" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="folderBack" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#c7d2fe"/>
+      <stop offset="1" stop-color="#a5b4fc"/>
+    </linearGradient>
+    <linearGradient id="folderFront" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#e5e9ff"/>
+    </linearGradient>
+    <linearGradient id="spark" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#fde68a"/>
+      <stop offset="1" stop-color="#f59e0b"/>
+    </linearGradient>
+    <filter id="glow" x="-80%" y="-80%" width="260%" height="260%">
+      <feGaussianBlur stdDeviation="26"/>
+    </filter>
+    <path id="star" d="M0 -100 C16 -16 16 -16 100 0 C16 16 16 16 0 100 C-16 16 -16 16 -100 0 C-16 -16 -16 -16 0 -100 Z"/>
+  </defs>
+
+  <!-- app tile with baked rounded corners -->
+  <rect x="96" y="96" width="832" height="832" rx="196" fill="url(#bg)"/>
+  <rect x="96" y="96" width="832" height="832" rx="196" fill="url(#gloss)"/>
+  <rect x="97" y="97" width="830" height="830" rx="195" fill="none" stroke="#ffffff" stroke-opacity="0.22" stroke-width="2"/>
+
+  <!-- folder -->
+  <g>
+    <rect x="252" y="392" width="252" height="96" rx="34" fill="url(#folderBack)"/>
+    <rect x="252" y="430" width="520" height="300" rx="44" fill="url(#folderBack)"/>
+    <rect x="252" y="492" width="520" height="238" rx="44" fill="url(#folderFront)"/>
+    <rect x="252" y="492" width="520" height="238" rx="44" fill="none" stroke="#c7d2fe" stroke-opacity="0.6" stroke-width="2"/>
+  </g>
+
+  <!-- AI sparkles -->
+  <g>
+    <use href="#star" transform="translate(716 366) scale(1.16)" fill="#fbbf24" opacity="0.55" filter="url(#glow)"/>
+    <use href="#star" transform="translate(716 366) scale(1.16)" fill="url(#spark)"/>
+    <use href="#star" transform="translate(606 300) scale(0.44)" fill="url(#spark)"/>
+    <use href="#star" transform="translate(770 486) scale(0.30)" fill="#fde68a"/>
+  </g>
+</svg>

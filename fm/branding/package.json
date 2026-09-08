@@ -1,0 +1,11 @@
+{
+  "name": "clive-branding",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "icon": "node generate-icon.mjs"
+  },
+  "devDependencies": {
+    "@resvg/resvg-js": "^2.6.2"
+  }
+}

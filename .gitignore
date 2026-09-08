@@ -1,0 +1,34 @@
+# OS
+.DS_Store
+*.log
+
+# Rust build artifacts
+fm/target/
+fm/src-tauri/target/
+
+# Node
+node_modules/
+fm/src/frontend/vite-project/node_modules/
+fm/node_modules/
+
+# Frontend build output
+fm/src/frontend/vite-project/dist/
+fm/src/frontend/vite-project/.vite/
+
+# Tauri / bundling
+fm/gen/schemas/
+
+# Agent / tool state
+.build/
+.opencode/
+.pi/
+
+# Secrets
+.env
+.env.local
+.claive/ai.env
+
+# Editor
+.idea/
+.vscode/
+*.swp
