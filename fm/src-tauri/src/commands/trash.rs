@@ -26,19 +26,28 @@ fn now_secs() -> u64 {
         .unwrap_or(0)
 }
 
+#[allow(dead_code)]
 static COUNTER: AtomicU64 = AtomicU64::new(0);
 
-/// Root of clive's recycle bin: `~/.clive/trash` (overridable via `CLIVE_TRASH_DIR`, used by tests).
-fn trash_root() -> PathBuf {
+/// Directory where trashed FILES live so they appear in the macOS (Dock) Trash:
+/// `~/.Trash` (overridable via `CLIVE_TRASH_DIR`, used by tests).
+fn trash_slot_dir() -> PathBuf {
     if let Some(dir) = std::env::var_os("CLIVE_TRASH_DIR") {
         return PathBuf::from(dir);
     }
     let home = std::env::var_os("HOME").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("/"));
-    home.join(".clive").join("trash")
+    home.join(".Trash")
 }
 
+/// Journal of clive-tracked items. Kept OUTSIDE `~/.Trash` so it never pollutes
+/// the real trash. `~/.clive/trash/journal.json` (overridable via
+/// `CLIVE_TRASH_JOURNAL`, used by tests).
 fn journal_path() -> PathBuf {
-    trash_root().join("journal.json")
+    if let Some(p) = std::env::var_os("CLIVE_TRASH_JOURNAL") {
+        return PathBuf::from(p);
+    }
+    let home = std::env::var_os("HOME").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("/"));
+    home.join(".clive").join("trash").join("journal.json")
 }
 
 /// Read the journal (empty if missing/corrupt).
@@ -67,6 +76,7 @@ fn write_journal(jpath: &Path, items: &[TrashItem]) -> Result<(), String> {
 }
 
 /// A unique opaque slot filename; avoids collisions with existing slots.
+#[allow(dead_code)]
 fn slot_name(dir: &Path) -> String {
     loop {
         let nanos = std::time::SystemTime::now()
@@ -89,6 +99,22 @@ fn split_name(name: &str, is_dir: bool) -> (String, String) {
     match name.rfind('.') {
         Some(dot) if dot > 0 => (name[..dot].to_string(), name[dot..].to_string()),
         _ => (name.to_string(), String::new()),
+    }
+}
+
+/// A unique destination name inside `dir`, macOS-style: `name.ext`, `name 2.ext`, …
+pub fn unique_in_dir(dir: &Path, desired_name: &str, is_dir: bool) -> String {
+    if !dir.join(desired_name).exists() {
+        return desired_name.to_string();
+    }
+    let (stem, ext) = split_name(desired_name, is_dir);
+    let mut i = 2;
+    loop {
+        let cand = format!("{stem} {i}{ext}");
+        if !dir.join(&cand).exists() {
+            return cand;
+        }
+        i += 1;
     }
 }
 
@@ -125,9 +151,13 @@ pub fn delete_to_trash(path: String, allow_system: bool) -> Result<(), String> {
         return Err(protected_err(&src));
     }
     let meta = fs::metadata(&src).map_err(|e| format!("cannot access {}: {e}", src.display()))?;
-    let root = trash_root();
+    let root = trash_slot_dir();
     fs::create_dir_all(&root).map_err(|e| e.to_string())?;
-    let id = slot_name(&root);
+    let desired = src
+        .file_name()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "item".to_string());
+    let id = unique_in_dir(&root, &desired, meta.is_dir());
     let slot = root.join(&id);
     move_path(&src, &slot).map_err(|e| format!("Move to trash failed: {e}"))?;
 
@@ -155,7 +185,7 @@ pub fn delete_to_trash(path: String, allow_system: bool) -> Result<(), String> {
 pub fn trash_list() -> Vec<TrashItem> {
     let jpath = journal_path();
     let raw = read_journal(&jpath);
-    let root = trash_root();
+    let root = trash_slot_dir();
     let mut items: Vec<TrashItem> = raw.iter().filter(|i| root.join(&i.id).exists()).cloned().collect();
     // Persist the pruned view so stale entries don't linger.
     if items.len() != raw.len() {
@@ -172,7 +202,7 @@ pub fn trash_restore(id: String) -> Result<String, String> {
     let mut items = read_journal(&jpath);
     let idx = items.iter().position(|i| i.id == id).ok_or("not found")?;
     let item = items[idx].clone();
-    let slot = trash_root().join(&item.id);
+    let slot = trash_slot_dir().join(&item.id);
     if !slot.exists() {
         items.remove(idx);
         write_journal(&jpath, &items)?;
@@ -196,7 +226,7 @@ pub fn trash_delete_forever(id: String) -> Result<(), String> {
     let mut items = read_journal(&jpath);
     if let Some(idx) = items.iter().position(|i| i.id == id) {
         let item = items.remove(idx);
-        remove_slot(&trash_root().join(&item.id))?;
+        remove_slot(&trash_slot_dir().join(&item.id))?;
         write_journal(&jpath, &items)?;
     }
     Ok(())
@@ -207,7 +237,7 @@ pub fn trash_delete_forever(id: String) -> Result<(), String> {
 pub fn trash_empty() -> Result<(), String> {
     let jpath = journal_path();
     let items = read_journal(&jpath);
-    let root = trash_root();
+    let root = trash_slot_dir();
     for item in &items {
         let _ = remove_slot(&root.join(&item.id));
     }
@@ -230,13 +260,19 @@ fn remove_slot(path: &Path) -> Result<(), String> {
 /// Debug view of the trash dir (unused by UI, handy for troubleshooting).
 #[allow(dead_code)]
 pub fn trash_root_json() -> serde_json::Value {
-    json!({ "trashRoot": trash_root().to_string_lossy() })
+    json!({ "trashRoot": trash_slot_dir().to_string_lossy() })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::collections::HashSet;
+    use std::sync::Mutex;
+
+    // The trash commands read process-global env vars (slot dir + journal).
+    // Serialize every env-touching test so parallel test threads can't leak
+    // into each other or into the developer's real ~/.Trash.
+    static TRASH_TEST_LOCK: Mutex<()> = Mutex::new(());
 
     #[test]
     fn restore_target_uses_original_when_free() {
@@ -298,21 +334,63 @@ mod tests {
     }
 
     #[test]
+    fn trash_empty_removes_all_slots_and_clears_journal() {
+        let _guard = TRASH_TEST_LOCK.lock().unwrap();
+        let base = std::env::temp_dir().join(format!("clive-trash-empty-{}", std::process::id()));
+        let tdir = base.join("trash");
+        let home = base.join("home");
+        fs::create_dir_all(&home).unwrap();
+        std::env::set_var("CLIVE_TRASH_DIR", &tdir);
+        std::env::set_var("CLIVE_TRASH_JOURNAL", base.join("journal.json"));
+
+        // one file + one directory trashed
+        let f = home.join("a.txt");
+        fs::write(&f, b"x").unwrap();
+        let d = home.join("sub");
+        fs::create_dir_all(&d).unwrap();
+        fs::write(d.join("inner"), b"y").unwrap();
+
+        delete_to_trash(f.to_string_lossy().into_owned(), true).unwrap();
+        delete_to_trash(d.to_string_lossy().into_owned(), true).unwrap();
+        assert_eq!(trash_list().len(), 2);
+        let slot_count = fs::read_dir(&tdir).map(|rd| rd.count()).unwrap_or(0);
+        assert!(slot_count >= 2, "expected at least 2 slots, got {slot_count}");
+
+        trash_empty().unwrap();
+
+        assert!(trash_list().is_empty(), "journal should be empty after empty");
+        // every slot file/dir must be gone (journal lives outside the slot dir)
+        let leftover: Vec<_> = fs::read_dir(&tdir)
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .collect();
+        assert!(leftover.is_empty(), "slots not removed: {leftover:?}");
+
+        std::env::remove_var("CLIVE_TRASH_DIR");
+        std::env::remove_var("CLIVE_TRASH_JOURNAL");
+        let _ = fs::remove_dir_all(&base);
+    }
+
+    #[test]
     fn delete_restore_and_delete_forever_roundtrip() {
+        let _guard = TRASH_TEST_LOCK.lock().unwrap();
         let base = std::env::temp_dir().join(format!("clive-trash-rt-{}", std::process::id()));
         let tdir = base.join("trash");
         let home = base.join("home");
         fs::create_dir_all(&home).unwrap();
         std::env::set_var("CLIVE_TRASH_DIR", &tdir);
+        std::env::set_var("CLIVE_TRASH_JOURNAL", base.join("journal.json"));
 
         let f = home.join("note.txt");
         fs::write(&f, b"hello").unwrap();
 
-        // delete → original gone, item appears in list
+        // delete → original gone, item appears in list (id is the human basename)
         delete_to_trash(f.to_string_lossy().into_owned(), true).unwrap();
         assert!(!f.exists());
         let items = trash_list();
         assert_eq!(items.len(), 1);
+        assert_eq!(items[0].id, "note.txt");
         assert_eq!(items[0].original_path, f.to_string_lossy());
 
         // restore → back at original path, list empty
@@ -331,6 +409,45 @@ mod tests {
         assert!(!f.exists());
 
         std::env::remove_var("CLIVE_TRASH_DIR");
+        std::env::remove_var("CLIVE_TRASH_JOURNAL");
+        let _ = fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn delete_uniquifies_colliding_names_in_slot_dir() {
+        let _guard = TRASH_TEST_LOCK.lock().unwrap();
+        let base = std::env::temp_dir().join(format!("clive-trash-collide-{}", std::process::id()));
+        let tdir = base.join("trash");
+        let home = base.join("home");
+        fs::create_dir_all(&tdir).unwrap();
+        fs::create_dir_all(&home).unwrap();
+        std::env::set_var("CLIVE_TRASH_DIR", &tdir);
+        std::env::set_var("CLIVE_TRASH_JOURNAL", base.join("journal.json"));
+
+        // pre-existing decoy already living in the slot dir
+        let decoy = tdir.join("dup.txt");
+        fs::write(&decoy, b"decoy").unwrap();
+
+        let f = home.join("dup.txt");
+        fs::write(&f, b"real").unwrap();
+        delete_to_trash(f.to_string_lossy().into_owned(), true).unwrap();
+
+        let items = trash_list();
+        assert_eq!(items.len(), 1);
+        // macOS-style collision suffix
+        assert_eq!(items[0].id, "dup 2.txt");
+        // the decoy is untouched; our file landed under the uniquified name
+        assert_eq!(fs::read_to_string(&decoy).unwrap(), "decoy");
+        assert_eq!(fs::read_to_string(tdir.join("dup 2.txt")).unwrap(), "real");
+
+        // restoring brings it back to the original path independently of the decoy
+        let restored = trash_restore(items[0].id.clone()).unwrap();
+        assert_eq!(PathBuf::from(&restored), f);
+        assert!(f.exists());
+        assert_eq!(fs::read_to_string(&decoy).unwrap(), "decoy");
+
+        std::env::remove_var("CLIVE_TRASH_DIR");
+        std::env::remove_var("CLIVE_TRASH_JOURNAL");
         let _ = fs::remove_dir_all(&base);
     }
 }

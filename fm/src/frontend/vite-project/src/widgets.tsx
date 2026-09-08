@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { diskSpace, openPath, formatSize, formatDate, revealInFinder, trashList, trashRestore, trashDeleteForever, trashEmpty, type DiskSpace, type TrashItem } from './api'
+import { diskSpace, openPath, formatSize, formatDate, revealInFinder, trashList, trashRestore, trashDeleteForever, trashEmpty, emptyTrash, type DiskSpace, type TrashItem } from './api'
 import type { MenuItem } from './ContextMenu'
 import { Popover } from './Popover'
 import type { WidgetCtx } from './widgetTypes'
@@ -280,7 +280,7 @@ export function DiskWidget({ ctx }: { ctx: WidgetCtx }) {
 /* ---------- trash (right) ---------- */
 export function TrashWidget({ ctx }: { ctx: WidgetCtx }) {
   const { t } = useTranslation()
-  const trashDir = ctx.home ? `${ctx.home}/.clive/trash` : ''
+  const trashDir = ctx.home ? `${ctx.home}/.Trash` : ''
   const [items, setItems] = useState<TrashItem[]>([])
   const [open, setOpen] = useState(false)
   const [confirm, setConfirm] = useState(false)
@@ -373,7 +373,7 @@ export function TrashWidget({ ctx }: { ctx: WidgetCtx }) {
             <p className="text-sm text-base-content/70">{t('trash.confirmBody', { count })}</p>
             <div className="mt-4 flex justify-end gap-2">
               <button data-bar-control className="btn btn-ghost btn-sm" onClick={() => setConfirm(false)}>{t('common.cancel')}</button>
-              <button data-bar-control className="btn btn-error btn-sm" onClick={() => { setConfirm(false); setOpen(false); void act(() => trashEmpty(), t('trash.emptied')) }}>
+              <button data-bar-control className="btn btn-error btn-sm" onClick={() => { setConfirm(false); setOpen(false); void act(async () => { await trashEmpty(); try { await emptyTrash() } catch { /* Finder may be denied/not-running; Clive-side already cleared */ } }, t('trash.emptied')) }}>
                 {t('trash.confirm')}
               </button>
             </div>
