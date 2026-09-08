@@ -22,6 +22,7 @@ fm/gen/schemas/
 .build/
 .opencode/
 .pi/
+.superpowers/
 
 # Secrets
 .env
