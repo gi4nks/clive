@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { render, screen, fireEvent, cleanup } from '@testing-library/react'
+import { render, screen, fireEvent, cleanup, act } from '@testing-library/react'
 
 import { CANCELLED_SENTINEL } from './chat.js'
 
@@ -93,5 +93,37 @@ describe('ChatDrawer', () => {
     const ai = makeAI({ historyTruncated: true })
     render(<ChatDrawer open={true} onClose={vi.fn()} ai={ai as never} />)
     expect(screen.getByText(/chat.truncated|trimmed|rimossi/i)).toBeInTheDocument()
+  })
+
+  it('renders assistant markdown: bold becomes <strong>', () => {
+    const ai = makeAI({ messages: [{ role: 'assistant', content: 'a **bold** word' }] })
+    const { container } = render(<ChatDrawer open={true} onClose={vi.fn()} ai={ai as never} />)
+    const strong = container.querySelector('strong')
+    expect(strong?.textContent).toBe('bold')
+  })
+
+  it('renders assistant markdown: fenced code becomes <code>', () => {
+    const ai = makeAI({ messages: [{ role: 'assistant', content: '```\nconst x = 1\n```' }] })
+    const { container } = render(<ChatDrawer open={true} onClose={vi.fn()} ai={ai as never} />)
+    const code = container.querySelector('pre code')
+    expect(code?.textContent).toContain('const x = 1')
+  })
+
+  it('copy button writes raw markdown to clipboard and confirms with Copiato!', async () => {
+    vi.useFakeTimers()
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
+    const ai = makeAI({ messages: [{ role: 'assistant', content: 'a **bold** word' }] })
+    render(<ChatDrawer open={true} onClose={vi.fn()} ai={ai as never} />)
+    const btn = screen.getByRole('button', { name: /ai\.copy/i })
+    fireEvent.click(btn)
+    await act(async () => {})
+    expect(writeText).toHaveBeenCalledWith('a **bold** word')
+    expect(screen.getByText('Copiato!')).toBeInTheDocument()
+    act(() => {
+      vi.advanceTimersByTime(2000)
+    })
+    expect(screen.queryByText('Copiato!')).not.toBeInTheDocument()
+    vi.useRealTimers()
   })
 })

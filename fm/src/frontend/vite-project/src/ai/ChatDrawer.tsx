@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, type DragEvent } from 'react'
 import { useTranslation } from 'react-i18next'
-import type { ChatController } from './useChat.js'
+import type { ChatController, ChatMessageState } from './useChat.js'
 import { CANCELLED_SENTINEL, type ChatAction } from './chat.js'
+import { Markdown } from './Markdown.js'
 
 /**
  * Right-side chat drawer (Task 5 of the AI chat plan). Consumes the Task-4
@@ -120,10 +121,7 @@ export function ChatDrawer({ open, onClose, ai }: { open: boolean; onClose: () =
           )}
           {ai.messages.map((m, i) => (
             <div key={i} className={`mb-2 ${m.role === 'user' ? 'text-right' : ''}`}>
-              <div className={`inline-block max-w-[85%] whitespace-pre-wrap break-words rounded-2xl px-3 py-2 ${m.role === 'user' ? 'bg-primary/10' : 'bg-base-200'}`}>
-                {m.content}
-                {m.streaming && <span className="ml-1 inline-block h-2 w-2 animate-pulse rounded-full bg-current" />}
-              </div>
+              <MessageBubble m={m} />
               {m.actions?.map((a, j) => (
                 <ActionCard
                   key={j}
@@ -177,6 +175,40 @@ export function ChatDrawer({ open, onClose, ai }: { open: boolean; onClose: () =
         </div>
       </div>
     </div>
+  )
+}
+
+/**
+ * One chat bubble. Assistant content renders as Markdown (GFM); user content
+ * stays verbatim pre-wrapped. Own `copied` state so the per-message copy
+ * button flips only the bubble it belongs to.
+ */
+function MessageBubble({ m }: { m: ChatMessageState }) {
+  const { t } = useTranslation()
+  const [copied, setCopied] = useState(false)
+  const isUser = m.role === 'user'
+  return (
+    <span className="group relative inline-block max-w-[85%] text-left align-top">
+      <span className={`block break-words rounded-2xl px-3 py-2 ${isUser ? 'bg-primary/10 whitespace-pre-wrap' : 'bg-base-200'}`}>
+        {isUser ? m.content : <Markdown text={m.content} />}
+        {m.streaming && <span className="ml-1 inline-block h-2 w-2 animate-pulse rounded-full bg-current" />}
+      </span>
+      <button
+        data-bar-control
+        className={`btn btn-ghost btn-xs absolute -top-1.5 right-1 !min-h-0 opacity-0 group-hover:opacity-100 focus:opacity-100 ${copied ? 'opacity-100 text-success' : ''}`}
+        onClick={async () => {
+          try {
+            await navigator.clipboard?.writeText(m.content)
+            setCopied(true)
+            setTimeout(() => setCopied(false), 2000)
+          } catch {
+            /* clipboard failed silently */
+          }
+        }}
+      >
+        {copied ? 'Copiato!' : t('ai.copy')}
+      </button>
+    </span>
   )
 }
 
