@@ -126,4 +126,41 @@ describe('usePlan', () => {
     expect(result.current.report).toBeNull()
     expect(result.current.batchId).toBeNull()
   })
+
+  it('updateOp preserves a deep issue through a blank-then-valid edit', () => {
+    const { result } = renderHook(() => usePlan())
+    act(() => result.current.setPlan(makePlan([issueOp()])))
+    // invalid edit must NOT launder 'target exists' into 'empty destination'
+    act(() => result.current.updateOp('m9', { destDir: ' ' }))
+    expect(result.current.plan?.ops[0]?.issue).toBe('target exists')
+    expect(result.current.plan?.ops[0]?.included).toBe(false)
+    // valid edit keeps the prior issue and stays excluded
+    act(() => result.current.updateOp('m9', { destDir: '/root/Z' }))
+    expect(result.current.plan?.ops[0]?.issue).toBe('target exists')
+    expect(result.current.plan?.ops[0]?.included).toBe(false)
+    // and toggle can never enable it afterwards
+    act(() => result.current.toggleOp('m9'))
+    expect(result.current.plan?.ops[0]?.included).toBe(false)
+  })
+
+  it('apply does not send ops that have an issue even if included', async () => {
+    vi.mocked(api.applyPlan).mockResolvedValue(report('any'))
+    const laundered: PlanOp = { id: 'x1', kind: 'trash', path: '/root/f', included: true, issue: 'target exists' }
+    const { result } = renderHook(() => usePlan())
+    act(() => result.current.setPlan(makePlan([cleanOp(), laundered])))
+    await act(async () => { await result.current.apply() })
+    const [, ops] = vi.mocked(api.applyPlan).mock.calls[0]
+    expect(ops).toHaveLength(1)
+    expect(ops?.[0]?.id).toBe('c1')
+  })
+
+  it('apply resets to error if progress subscription throws', async () => {
+    vi.mocked(api.onPlanProgress).mockRejectedValue(new Error('listen boom'))
+    const { result } = renderHook(() => usePlan())
+    act(() => result.current.setPlan(makePlan([cleanOp()])))
+    await act(async () => { await result.current.apply() })
+    expect(result.current.phase).toBe('error')
+    expect(result.current.error).toBe('listen boom')
+    expect(api.applyPlan).not.toHaveBeenCalled()
+  })
 })

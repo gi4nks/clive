@@ -15,9 +15,11 @@ export type PlanPhase = 'idle' | 'review' | 'applying' | 'applied' | 'undone' | 
 /** Local panel edits. Only the key matching the op's kind is honored. */
 export type PlanOpPatch = { path?: string; newName?: string; destDir?: string }
 
-/** Issues produced by updateOp; only these are cleared by a valid re-edit.
- * Deep issues from expandPlan ('protected', 'target exists', 'not found', …)
- * are permanent (spec §7: issue ops are non-enableable). */
+/** Issues produced by updateOp; only these are cleared by a valid re-edit,
+ * and only when the op had NO pre-existing issue. Any issue that predates the
+ * edit (expandPlan's 'protected', 'target exists', 'not found', …) is
+ * authoritative and survives every later edit — spec §5.2 "issue ⇒ permanently
+ * excluded". */
 const LOCAL_ISSUES = new Set(['empty path', 'invalid name', 'empty destination'])
 
 const newBatchId = (): string => {
@@ -94,8 +96,15 @@ export function usePlan() {
         next = { ...o, destDir: patch.destDir }
         if (!patch.destDir.trim()) issue = 'empty destination'
       }
-      if (issue) return { ...next, issue, included: false }
+      const localIssue = issue
+      // Deep issues come from expandPlan and are NOT reproducible by updateOp,
+      // so any string outside LOCAL_ISSUES is authoritative and can never be
+      // overwritten or cleared through this function (spec §5.2).
+      const priorIsDeep = next.issue !== undefined && !LOCAL_ISSUES.has(next.issue)
+      if (localIssue) return { ...next, issue: priorIsDeep ? next.issue : localIssue, included: false }
+      if (priorIsDeep) return next
       if (next.issue && LOCAL_ISSUES.has(next.issue)) {
+        // only clear an issue updateOp itself introduced (possibly in a prior edit)
         const { issue: _drop, ...rest } = next
         return rest as PlanOp
       }
@@ -114,9 +123,9 @@ export function usePlan() {
     setError(null)
     setProgress(null)
     setPhase('applying')
-    unsubRef.current = await onPlanProgress(setProgress)
     try {
-      const r = await applyPlan(id, p.ops.filter((o) => o.included))
+      unsubRef.current = await onPlanProgress(setProgress)
+      const r = await applyPlan(id, p.ops.filter((o) => o.included && !o.issue))
       setReport(r)
       setPhase('applied')
     } catch (e) {
@@ -135,8 +144,8 @@ export function usePlan() {
     setError(null)
     setProgress(null)
     setPhase('applying')
-    unsubRef.current = await onPlanProgress(setProgress)
     try {
+      unsubRef.current = await onPlanProgress(setProgress)
       const r = await undoPlan(id)
       setUndoReport(r)
       setPhase('undone')
