@@ -15,13 +15,6 @@ export type PlanPhase = 'idle' | 'review' | 'applying' | 'applied' | 'undone' | 
 /** Local panel edits. Only the key matching the op's kind is honored. */
 export type PlanOpPatch = { path?: string; newName?: string; destDir?: string }
 
-/** Issues produced by updateOp; only these are cleared by a valid re-edit,
- * and only when the op had NO pre-existing issue. Any issue that predates the
- * edit (expandPlan's 'protected', 'target exists', 'not found', …) is
- * authoritative and survives every later edit — spec §5.2 "issue ⇒ permanently
- * excluded". */
-const LOCAL_ISSUES = new Set(['empty path', 'invalid name', 'empty destination'])
-
 const newBatchId = (): string => {
   const c = (globalThis.crypto ?? {}) as Crypto & { randomUUID?: () => string }
   return c.randomUUID?.() ?? `plan-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
@@ -44,12 +37,24 @@ export function usePlan() {
   const batchRef = useRef<string | null>(null)
   batchRef.current = batchId
   const unsubRef = useRef<(() => void | Promise<void>) | null>(null)
+  /** Origin-based (R12): op ids whose issue came from expandPlan (present at
+   * setPlan time) are authoritative FOREVER for this plan instance. We key on
+   * origin, never on issue strings — plan.ts may legitimately emit strings
+   * that coincide with updateOp's local ones. */
+  const authoritativeRef = useRef<Set<string>>(new Set())
+  const aliveRef = useRef(true)
 
   const stopProgress = () => {
     void unsubRef.current?.()
     unsubRef.current = null
   }
-  useEffect(() => stopProgress, [])
+  useEffect(() => {
+    aliveRef.current = true
+    return () => {
+      aliveRef.current = false
+      stopProgress()
+    }
+  }, [])
 
   const resetRun = () => {
     setReport(null)
@@ -61,6 +66,7 @@ export function usePlan() {
 
   const setPlan = useCallback((p: Plan) => {
     stopProgress()
+    authoritativeRef.current = new Set(p.ops.filter((o) => o.issue).map((o) => o.id))
     setPlanState(p)
     setPhase('review')
     resetRun()
@@ -68,6 +74,7 @@ export function usePlan() {
 
   const close = useCallback(() => {
     stopProgress()
+    authoritativeRef.current = new Set()
     setPlanState(null)
     setPhase('idle')
     resetRun()
@@ -76,12 +83,20 @@ export function usePlan() {
   const mutate = (fn: (o: PlanOp) => PlanOp) =>
     setPlanState((p) => (p ? { ...p, ops: p.ops.map(fn) } : p))
 
-  /** Flip included; an op carrying an `issue` can NEVER be enabled. */
+  /** Flip included; an op carrying an `issue` — or authoritative from the
+   * moment the plan arrived — can NEVER be enabled (spec §5.2). */
   const toggleOp = useCallback((id: string) => {
-    mutate((o) => (o.id === id ? { ...o, included: o.issue ? false : !o.included } : o))
+    mutate((o) =>
+      o.id === id
+        ? { ...o, included: o.issue || authoritativeRef.current.has(o.id) ? false : !o.included }
+        : o,
+    )
   }, [])
 
   const updateOp = useCallback((id: string, patch: PlanOpPatch) => {
+    // Authoritative ops are locked: edits are rejected outright, so their
+    // issue can neither be overwritten nor cleared (origin-based, R12).
+    if (authoritativeRef.current.has(id)) return
     mutate((o) => {
       if (o.id !== id) return o
       let next: PlanOp = o
@@ -96,15 +111,10 @@ export function usePlan() {
         next = { ...o, destDir: patch.destDir }
         if (!patch.destDir.trim()) issue = 'empty destination'
       }
-      const localIssue = issue
-      // Deep issues come from expandPlan and are NOT reproducible by updateOp,
-      // so any string outside LOCAL_ISSUES is authoritative and can never be
-      // overwritten or cleared through this function (spec §5.2).
-      const priorIsDeep = next.issue !== undefined && !LOCAL_ISSUES.has(next.issue)
-      if (localIssue) return { ...next, issue: priorIsDeep ? next.issue : localIssue, included: false }
-      if (priorIsDeep) return next
-      if (next.issue && LOCAL_ISSUES.has(next.issue)) {
-        // only clear an issue updateOp itself introduced (possibly in a prior edit)
+      if (issue) return { ...next, issue, included: false }
+      if (next.issue) {
+        // non-authoritative op: any issue it carries was introduced by an
+        // earlier updateOp, so a valid re-edit legitimately clears it
         const { issue: _drop, ...rest } = next
         return rest as PlanOp
       }
@@ -124,7 +134,12 @@ export function usePlan() {
     setProgress(null)
     setPhase('applying')
     try {
-      unsubRef.current = await onPlanProgress(setProgress)
+      const unsub = await onPlanProgress(setProgress)
+      if (!aliveRef.current) {
+        void unsub()
+        return
+      }
+      unsubRef.current = unsub
       const r = await applyPlan(id, p.ops.filter((o) => o.included && !o.issue))
       setReport(r)
       setPhase('applied')
@@ -145,7 +160,12 @@ export function usePlan() {
     setProgress(null)
     setPhase('applying')
     try {
-      unsubRef.current = await onPlanProgress(setProgress)
+      const unsub = await onPlanProgress(setProgress)
+      if (!aliveRef.current) {
+        void unsub()
+        return
+      }
+      unsubRef.current = unsub
       const r = await undoPlan(id)
       setUndoReport(r)
       setPhase('undone')

@@ -109,10 +109,11 @@ describe('usePlan', () => {
     act(() => result.current.updateOp('c1', { path: '/root/Ok' }))
     expect(result.current.plan?.ops[0]?.issue).toBeUndefined()
     expect(result.current.plan?.ops[0]?.included).toBe(false)
-    // patching an op with a foreign (expandPlan) issue keeps it
+    // patching an op whose issue is authoritative (from expandPlan): edit is
+    // rejected outright, issue and original values preserved (R12)
     act(() => result.current.updateOp('m9', { destDir: '/root/Y' }))
     expect(result.current.plan?.ops[1]?.issue).toBe('target exists')
-    expect(result.current.plan?.ops[1]?.kind === 'move' && result.current.plan?.ops[1]?.destDir).toBe('/root/Y')
+    expect(result.current.plan?.ops[1]?.kind === 'move' && result.current.plan?.ops[1]?.destDir).toBe('/root/X')
   })
 
   it('close resets everything to idle', async () => {
@@ -141,6 +142,36 @@ describe('usePlan', () => {
     // and toggle can never enable it afterwards
     act(() => result.current.toggleOp('m9'))
     expect(result.current.plan?.ops[0]?.included).toBe(false)
+  })
+
+  it('authoritative (expandPlan) issue survives edit-then-clear-then-toggle', () => {
+    // The round-1 leak: 'invalid name' is produced by BOTH expandPlan and
+    // updateOp — origin (not string) must decide. Op arrives with the issue.
+    const op: PlanOp = { id: 'n1', kind: 'rename', path: '/root/a.txt', newName: 'b/c', included: false, issue: 'invalid name' }
+    const { result } = renderHook(() => usePlan())
+    act(() => result.current.setPlan(makePlan([op])))
+    act(() => result.current.updateOp('n1', { newName: 'good.txt' }))
+    expect(result.current.plan?.ops[0]?.issue).toBe('invalid name')
+    expect(result.current.plan?.ops[0]?.kind === 'rename' && result.current.plan?.ops[0]?.newName).toBe('b/c')
+    expect(result.current.plan?.ops[0]?.included).toBe(false)
+    act(() => result.current.toggleOp('n1'))
+    expect(result.current.plan?.ops[0]?.included).toBe(false)
+  })
+
+  it('local issue (from updateOp) is clearable and toggleable', () => {
+    const { result } = renderHook(() => usePlan())
+    act(() => result.current.setPlan(makePlan([cleanOp()])))
+    // invalid edit → local issue, force-excluded
+    act(() => result.current.updateOp('c1', { path: '  ' }))
+    expect(result.current.plan?.ops[0]?.issue).toBe('empty path')
+    expect(result.current.plan?.ops[0]?.included).toBe(false)
+    // valid re-edit → local issue cleared (op stays disabled until toggled)
+    act(() => result.current.updateOp('c1', { path: '/root/Ok' }))
+    expect(result.current.plan?.ops[0]?.issue).toBeUndefined()
+    expect(result.current.plan?.ops[0]?.included).toBe(false)
+    // and it CAN be re-enabled — the lock isn't a blanket freeze
+    act(() => result.current.toggleOp('c1'))
+    expect(result.current.plan?.ops[0]?.included).toBe(true)
   })
 
   it('apply does not send ops that have an issue even if included', async () => {
