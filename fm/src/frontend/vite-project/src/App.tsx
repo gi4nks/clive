@@ -608,10 +608,13 @@ export default function App() {
   const [lastBatchId, setLastBatchId] = useState<string | null>(null)
 
   // R11: persist the last successfully applied batch so undo survives a restart.
+  // M-2: a batch that applied nothing has no inverses to undo (and Rust never
+  // consumes a 0-entry journal) — don't advertise an Undo for it.
   useEffect(() => {
     if (plan.phase !== 'applied' || !plan.batchId) return
+    if (!plan.report || plan.report.applied === 0) return
     writeLastBatch({ batchId: plan.batchId, rootPath: plan.plan?.rootPath ?? null, createdAt: Date.now() })
-  }, [plan.phase, plan.batchId, plan.plan?.rootPath])
+  }, [plan.phase, plan.batchId, plan.plan?.rootPath, plan.report])
 
   // The journal is consumed by an in-panel undo: never keep a stale restart claim.
   useEffect(() => {
@@ -631,14 +634,25 @@ export default function App() {
   const undoLastBatch = useCallback(async () => {
     if (!lastBatchId) return
     try {
-      await undoPlan(lastBatchId)
+      const r = await undoPlan(lastBatchId)
       handleSetStatus(i18n.t('plan.undoDone'), 'success')
+      // M-3: the Rust side keeps a journal whose inverses ALL failed (retry is
+      // possible, e.g. trash was restored) — mirror that here and only drop the
+      // key when the journal was consumed or nothing failed.
+      const retryable = r.applied === 0 && r.failed.length > 0
+      if (!retryable) {
+        clearLastBatch()
+        setLastBatchId(null)
+      }
     } catch (err) {
-      handleSetStatus(String(err), 'error')
-    } finally {
-      // Journal consumed (or gone/already undone): the key has no further use.
-      clearLastBatch()
-      setLastBatchId(null)
+      const msg = String(err)
+      // Dead-journal errors mean the pointer can never succeed; transient
+      // failures (IPC, permission) keep the key so the user can retry (M-3).
+      if (/invalid batchId|no journal|already undone|corrupt journal|unsupported journal version/.test(msg)) {
+        clearLastBatch()
+        setLastBatchId(null)
+      }
+      handleSetStatus(msg, 'error')
     }
   }, [lastBatchId, handleSetStatus])
 
