@@ -70,7 +70,9 @@ export function expandPlan(json: ModelPlanShape, ctx: ExpandCtx): Plan {
       const v = validateFolderPath(acc)
       const absPath = join(ctx.rootPath, acc)
       seenFolders.add(acc)
-      folderAdds.push({ id: nextId('createFolder'), kind: 'createFolder', path: absPath, included: v.ok, issue: v.ok ? undefined : 'invalid folder path' })
+      const clash = ctx.entries.some((e) => e.path === absPath)
+      const issue = !v.ok ? 'invalid folder path' : guardBlock(absPath) ?? (clash ? 'target exists' : undefined)
+      folderAdds.push({ id: nextId('createFolder'), kind: 'createFolder', path: absPath, included: !issue, issue })
     }
     return join(ctx.rootPath, clean)
   }
@@ -86,10 +88,10 @@ export function expandPlan(json: ModelPlanShape, ctx: ExpandCtx): Plan {
     return ctx.entries.find((e) => re.test(e.name))
   }
 
+  const guardBlock = (abs: string): string | undefined => (ctx.guardOn && isProtectedPath(abs) ? 'protected' : undefined)
+
   // top-level folder declarations create their chains too
   for (const f of json.folders ?? []) addFolderChain(f)
-
-  const guardBlock = (abs: string): string | undefined => (ctx.guardOn && isProtectedPath(abs) ? 'protected' : undefined)
 
   // rename ops (before moves so we can rename then place)
   for (const r of json.renames ?? []) {

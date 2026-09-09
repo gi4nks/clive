@@ -73,6 +73,24 @@ describe('expandPlan', () => {
     const bad = folderCreates.find((f) => f.issue)
     expect(bad).toBeTruthy()
   })
+
+  it('folder path under a protected root is excluded when guard on', () => {
+    const c = { rootPath: '/System', entries: [] as FileEntry[], guardOn: true }
+    const p = expandPlan({ ...empty, folders: ['Foo'] }, c)
+    const folders = p.ops.filter((o) => o.kind === 'createFolder')
+    expect(folders.length).toBeGreaterThan(0)
+    expect(folders.every((f) => !f.included && f.issue === 'protected')).toBe(true)
+    const off = expandPlan({ ...empty, folders: ['Foo'] }, { ...c, guardOn: false })
+    expect(off.ops.filter((o) => o.kind === 'createFolder').every((f) => f.included)).toBe(true)
+  })
+
+  it('createFolder colliding with an existing entry is excluded with target-exists issue', () => {
+    const p = expandPlan({ ...empty, folders: ['Docs'] }, ctx([entry('Docs', true)]))
+    const folders = p.ops.filter((o) => o.kind === 'createFolder')
+    expect(folders.length).toBe(1)
+    expect(folders[0].included).toBe(false)
+    expect(folders[0].issue).toBe('target exists')
+  })
 })
 
 describe('orderPlanOps', () => {
