@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type MouseEvent, type PointerEvent as ReactPointerEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import { formatDate, formatSize, kindOf, type FileEntry } from './api'
+import { ChildCountBadge } from './ChildCountBadge'
 import { FileIcon } from './FileIcon'
 import { getAppConfig, useAppConfig } from './settings/appConfig'
 import { clampWidth, COL_MIN, COL_MAX } from './resize'
@@ -216,9 +217,13 @@ export function FileList({
                   <span className="truncate text-[13px] font-medium">{file.name}</span>
                 )}
               </div>
-              <span className="text-right text-xs tabular-nums text-base-content/60">
-                {file.isDir ? '—' : formatSize(file.size)}
-              </span>
+              {file.isDir ? (
+                <ChildCountBadge path={file.path} />
+              ) : (
+                <span className="text-right text-xs tabular-nums text-base-content/60">
+                  {formatSize(file.size)}
+                </span>
+              )}
               <span className="text-right text-xs text-base-content/60">
                 {formatDate(file.modified)}
               </span>
