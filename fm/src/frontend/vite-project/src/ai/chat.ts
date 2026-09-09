@@ -187,3 +187,64 @@ export function buildChatPrompt(ctx: ChatPromptCtx, history: ChatMessage[], user
   ]
   return { system: CHAT_SYSTEM_PROMPT, prompt: parts.filter(Boolean).join('\n'), truncated }
 }
+
+// ---------------------------------------------------------------------------
+// Plan generation (AI Plan task 2): second model turn -> ModelPlanShape.
+// ---------------------------------------------------------------------------
+import { z } from 'zod'
+import i18n from '../i18n'
+import { generateStructured, type AiHealth } from './runtime.js'
+import type { ModelPlanShape } from './plan.js'
+
+/** Wire schema for the plan turn; arrays default to [] so downstream never crashes. */
+export const ModelPlanShapeSchema = z.object({
+  folders: z.array(z.string()).default([]),
+  assignments: z.array(z.object({ file: z.string(), to: z.string() })).default([]),
+  renames: z.array(z.object({ file: z.string(), to: z.string() })).default([]),
+  trash: z.array(z.object({ file: z.string() })).default([]),
+  notes: z.string().optional(),
+})
+
+export interface PlanDeps {
+  model: string
+  health: AiHealth
+  signal?: AbortSignal
+  /** Injected so tests can fake the model; production passes generateStructured. */
+  callModel?: typeof generateStructured
+}
+
+const PLAN_SYSTEM_PROMPT =
+  'You are a file-organization planner for a dual-pane file manager. ' +
+  'Return ONLY a json object with keys folders[], assignments[{file,to}], renames[{file,to}], trash[{file}]. ' +
+  '`file` must be a basename present in the listing. `to` is a relative folder path using `/`. ' +
+  'Do not invent names. Do not modify existing folders beyond creating the listed new subfolders.'
+
+/**
+ * Turn a chat reorganization analysis into a structured plan with ONE model
+ * call. Ruling R2: the word "json" must appear in BOTH system and user
+ * prompts (gateway providers reject response_format json_object otherwise).
+ */
+export async function generatePlan(
+  args: { text: string; listing: string } & PlanDeps,
+): Promise<ModelPlanShape> {
+  if (!args.health.ok) throw new Error(i18n.t('ai.providerUnreachable'))
+  const prompt =
+    'Assistant analysis:\n' + args.text + '\n\n' +
+    'Directory listing:\n' + args.listing + '\n\n' +
+    'Produce the json plan now.'
+  const call = args.callModel ?? generateStructured
+  const out = (await call({
+    model: args.model,
+    schema: ModelPlanShapeSchema,
+    system: PLAN_SYSTEM_PROMPT,
+    prompt,
+    signal: args.signal,
+  })) as Partial<ModelPlanShape>
+  return {
+    folders: out.folders ?? [],
+    assignments: out.assignments ?? [],
+    renames: out.renames ?? [],
+    trash: out.trash ?? [],
+    notes: out.notes,
+  }
+}

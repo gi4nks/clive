@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { extractActions, validateChatAction, trimHistory, buildChatPrompt, CHAT_SYSTEM_PROMPT, type ChatMessage } from './chat.js'
+import { extractActions, validateChatAction, trimHistory, buildChatPrompt, generatePlan, CHAT_SYSTEM_PROMPT, type ChatMessage } from './chat.js'
 import { renderDirListing } from './budget.js'
 
 describe('extractActions', () => {
@@ -148,5 +148,32 @@ describe('renderDirListing', () => {
     const s = renderDirListing(many as never, 100)
     expect(s.split('\n').length).toBeLessThanOrEqual(102)
     expect(s).toMatch(/\+ \d+ more|\.\.\./)
+  })
+})
+
+describe('generatePlan', () => {
+  it('generatePlan requests json_object and returns parsed shape', async () => {
+    const fake = async (a: any) => {
+      expect(a.prompt).toMatch(/json/i)
+      expect(a.prompt).toContain('cv.pdf')
+      expect(a.prompt).toContain('CV')
+      expect(a.system).toMatch(/json/i)
+      return { folders: ['CV'], assignments: [{ file: 'cv.pdf', to: 'CV' }], renames: [], trash: [] }
+    }
+    const out = await generatePlan({ text: 'put cv.pdf into CV', listing: 'cv.pdf', model: 'x/y', health: { ok: true, providers: {} }, callModel: fake })
+    expect(out.folders).toEqual(['CV'])
+  })
+
+  it('normalizes missing fields to empty arrays (no throw)', async () => {
+    const fake = async () => ({})
+    const out = await generatePlan({ text: 't', listing: 'l', model: 'x/y', health: { ok: true, providers: {} }, callModel: fake })
+    expect(out).toEqual({ folders: [], assignments: [], renames: [], trash: [], notes: undefined })
+  })
+
+  it('throws when no provider is reachable', async () => {
+    const fake = async () => { throw new Error('must not be called') }
+    await expect(
+      generatePlan({ text: 't', listing: 'l', model: 'x/y', health: { ok: false, providers: {} }, callModel: fake }),
+    ).rejects.toThrow()
   })
 })
