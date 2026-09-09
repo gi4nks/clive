@@ -4,6 +4,16 @@ import type { ChatController, ChatMessageState } from './useChat.js'
 import { CANCELLED_SENTINEL, type ChatAction } from './chat.js'
 import { Markdown } from './Markdown.js'
 
+export interface ChatDrawerProps {
+  open: boolean
+  onClose: () => void
+  ai: ChatController
+  /** R8: 🪄 click only forwards the message content; App runs the plan pipeline. */
+  onCreatePlan?: (text: string) => void
+  /** R7: false when the active folder exceeds the hard cap (button disabled). */
+  canPlan?: boolean
+}
+
 /**
  * Right-side chat drawer (Task 5 of the AI chat plan). Consumes the Task-4
  * `useChat` controller. Nothing the model proposes executes until the user
@@ -11,7 +21,7 @@ import { Markdown } from './Markdown.js'
  * streaming: `useChat.send` silently drops overlapping sends, so the UI must
  * not let the user start one (Task-4 residual finding).
  */
-export function ChatDrawer({ open, onClose, ai }: { open: boolean; onClose: () => void; ai: ChatController }) {
+export function ChatDrawer({ open, onClose, ai, onCreatePlan, canPlan = true }: ChatDrawerProps) {
   const { t } = useTranslation()
   const [input, setInput] = useState('')
   const [copied, setCopied] = useState(false)
@@ -121,7 +131,7 @@ export function ChatDrawer({ open, onClose, ai }: { open: boolean; onClose: () =
           )}
           {ai.messages.map((m, i) => (
             <div key={i} className={`mb-2 ${m.role === 'user' ? 'text-right' : ''}`}>
-              <MessageBubble m={m} />
+              <MessageBubble m={m} onCreatePlan={onCreatePlan} canPlan={canPlan} />
               {m.actions?.map((a, j) => (
                 <ActionCard
                   key={j}
@@ -183,31 +193,56 @@ export function ChatDrawer({ open, onClose, ai }: { open: boolean; onClose: () =
  * stays verbatim pre-wrapped. Own `copied` state so the per-message copy
  * button flips only the bubble it belongs to.
  */
-function MessageBubble({ m }: { m: ChatMessageState }) {
+function MessageBubble({
+  m,
+  onCreatePlan,
+  canPlan = true,
+}: {
+  m: ChatMessageState
+  onCreatePlan?: (text: string) => void
+  canPlan?: boolean
+}) {
   const { t } = useTranslation()
   const [copied, setCopied] = useState(false)
   const isUser = m.role === 'user'
+  const wand = !isUser && !!onCreatePlan
   return (
     <span className="group relative inline-block max-w-[85%] text-left align-top">
       <span className={`block break-words rounded-2xl px-3 py-2 ${isUser ? 'bg-primary/10 whitespace-pre-wrap' : 'bg-base-200'}`}>
         {isUser ? m.content : <Markdown text={m.content} />}
         {m.streaming && <span className="ml-1 inline-block h-2 w-2 animate-pulse rounded-full bg-current" />}
       </span>
-      <button
-        data-bar-control
-        className={`btn btn-ghost btn-xs absolute -top-1.5 right-1 !min-h-0 opacity-0 group-hover:opacity-100 focus:opacity-100 ${copied ? 'opacity-100 text-success' : ''}`}
-        onClick={async () => {
-          try {
-            await navigator.clipboard?.writeText(m.content)
-            setCopied(true)
-            setTimeout(() => setCopied(false), 2000)
-          } catch {
-            /* clipboard failed silently */
-          }
-        }}
+      <span
+        className={`absolute -top-1.5 right-1 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100 ${copied ? 'opacity-100' : ''}`}
       >
-        {copied ? 'Copiato!' : t('ai.copy')}
-      </button>
+        {wand && (
+          <button
+            data-bar-control
+            className="btn btn-ghost btn-xs !min-h-0"
+            disabled={!canPlan}
+            title={canPlan ? t('plan.createBtn') : t('plan.tooBig')}
+            aria-label={t('plan.createBtn')}
+            onClick={() => onCreatePlan?.(m.content)}
+          >
+            🪄
+          </button>
+        )}
+        <button
+          data-bar-control
+          className={`btn btn-ghost btn-xs !min-h-0 ${copied ? 'text-success' : ''}`}
+          onClick={async () => {
+            try {
+              await navigator.clipboard?.writeText(m.content)
+              setCopied(true)
+              setTimeout(() => setCopied(false), 2000)
+            } catch {
+              /* clipboard failed silently */
+            }
+          }}
+        >
+          {copied ? 'Copiato!' : t('ai.copy')}
+        </button>
+      </span>
     </span>
   )
 }

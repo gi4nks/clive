@@ -237,7 +237,12 @@
     "cancel": "Annulla",
     "close": "Chiudi",
     "reassign": "Sposta in",
-    "root": "Radice"
+    "root": "Radice",
+    "createBtn": "Crea piano",
+    "tooBig": "Cartella troppo grande per il piano",
+    "undoLast": "Annulla",
+    "lastBatch": "Ultimo piano applicato: puoi ancora annullarlo.",
+    "undoDone": "Piano annullato"
   },
   "settings": {
     "title": "Impostazioni",

@@ -109,6 +109,45 @@ describe('ChatDrawer', () => {
     expect(code?.textContent).toContain('const x = 1')
   })
 
+  it('🪄 button on an assistant message calls onCreatePlan with the raw content', () => {
+    const onCreatePlan = vi.fn()
+    const ai = makeAI({
+      messages: [
+        { role: 'user', content: 'organizza' },
+        { role: 'assistant', content: 'analisi **completa**' },
+      ],
+    })
+    render(<ChatDrawer open={true} onClose={vi.fn()} ai={ai as never} onCreatePlan={onCreatePlan} />)
+    const wand = screen.getByRole('button', { name: /plan\.createBtn/i })
+    fireEvent.click(wand)
+    expect(onCreatePlan).toHaveBeenCalledWith('analisi **completa**')
+  })
+
+  it('no 🪄 button on user messages nor when onCreatePlan is absent', () => {
+    const ai = makeAI({ messages: [{ role: 'user', content: 'ciao' }] })
+    render(<ChatDrawer open={true} onClose={vi.fn()} ai={ai as never} onCreatePlan={vi.fn()} />)
+    expect(screen.queryByRole('button', { name: /plan\.createBtn/i })).not.toBeInTheDocument()
+  })
+
+  it('🪄 is disabled with plan.tooBig title when canPlan is false (R7)', () => {
+    const onCreatePlan = vi.fn()
+    const ai = makeAI({ messages: [{ role: 'assistant', content: 'x' }] })
+    render(
+      <ChatDrawer
+        open={true}
+        onClose={vi.fn()}
+        ai={ai as never}
+        onCreatePlan={onCreatePlan}
+        canPlan={false}
+      />,
+    )
+    const wand = screen.getByRole('button', { name: /plan\.createBtn/i })
+    expect(wand).toBeDisabled()
+    expect(wand).toHaveAttribute('title', 'plan.tooBig')
+    fireEvent.click(wand)
+    expect(onCreatePlan).not.toHaveBeenCalled()
+  })
+
   it('copy button writes raw markdown to clipboard and confirms with Copiato!', async () => {
     vi.useFakeTimers()
     const writeText = vi.fn().mockResolvedValue(undefined)

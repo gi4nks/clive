@@ -237,7 +237,12 @@
     "cancel": "Cancel",
     "close": "Close",
     "reassign": "Move to",
-    "root": "Root"
+    "root": "Root",
+    "createBtn": "Create plan",
+    "tooBig": "Folder too large to plan",
+    "undoLast": "Undo",
+    "lastBatch": "Last applied plan can still be undone.",
+    "undoDone": "Plan undone"
   },
   "settings": {
     "title": "Settings",

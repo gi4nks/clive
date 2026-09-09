@@ -24,6 +24,7 @@ import {
   quickLook,
   rename,
   revealInFinder,
+  undoPlan,
   type ClipboardInfo,
   type FileEntry,
 } from './api'
@@ -32,6 +33,7 @@ import { FilePane, type PaneId, type PaneState } from './FilePane'
 import { PaneRail } from './PaneRail'
 import { ContextMenu, type MenuItem } from './ContextMenu'
 import { isProtectedPath } from './systemGuard'
+import { invalidateChildCount } from './childCount'
 import { SplitHandle } from './SplitHandle'
 import { clampWidth, collapsePane, SIDEBAR_MIN, SIDEBAR_MAX } from './resize'
 import { StatusBar } from './StatusBar'
@@ -41,6 +43,9 @@ import { useAi } from './ai/useAi'
 import { AiOverlay } from './ai/AiOverlay'
 import { useChat } from './ai/useChat'
 import { ChatDrawer } from './ai/ChatDrawer'
+import { usePlan } from './ai/usePlan'
+import { PlanPanel } from './ai/PlanPanel'
+import { createPlanFromMessage, PLAN_MAX_ENTRIES } from './ai/createPlanFromMessage'
 import { fullModelId } from './ai/settings'
 import { SettingsModal } from './settings/SettingsModal'
 import { TransferPicker } from './TransferPicker'
@@ -381,6 +386,7 @@ export default function App() {
 
   const refreshPane = useCallback(
     async (id: PaneId, path: string) => {
+      invalidateChildCount()
       patch(id, (p) => ({ ...p, loading: true }))
       try {
         const items = await listDir(path, hiddenVisible)
@@ -571,6 +577,72 @@ export default function App() {
   useEffect(() => {
     if (ai.busy || ai.hasPreview) setChatOpen(false)
   }, [ai.busy, ai.hasPreview])
+
+  // --- AI Plan (Task 6): App owns the pipeline; ChatDrawer only forwards 🪄. ---
+  const plan = usePlan()
+  const canPlan = entries.length <= PLAN_MAX_ENTRIES
+
+  const handleCreatePlan = useCallback(
+    async (text: string) => {
+      try {
+        const p = await createPlanFromMessage({
+          text,
+          entries: visibleEntries,
+          currentPath,
+          guardOn: cfg.guardSystemLocations,
+          model: fullModelId(ai.sel),
+        })
+        plan.setPlan(p)
+      } catch (e) {
+        handleSetStatus(String(e), 'error')
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- ai.sel/setPlan churn every render; handler is cheap
+    [visibleEntries, currentPath, cfg.guardSystemLocations, ai.sel, plan.setPlan, handleSetStatus],
+  )
+
+  // R11: persist the last successfully applied batch so undo survives a restart.
+  useEffect(() => {
+    if (plan.phase !== 'applied' || !plan.batchId) return
+    try {
+      localStorage.setItem(
+        'clive.plan.lastBatch',
+        JSON.stringify({ batchId: plan.batchId, rootPath: plan.plan?.rootPath ?? null, createdAt: Date.now() }),
+      )
+    } catch {
+      /* storage full/unavailable — undo banner is best-effort */
+    }
+  }, [plan.phase, plan.batchId, plan.plan?.rootPath])
+
+  const [lastBatchId, setLastBatchId] = useState<string | null>(null)
+  useEffect(() => {
+    const raw = localStorage.getItem('clive.plan.lastBatch')
+    if (!raw) return
+    try {
+      const parsed = JSON.parse(raw) as { batchId?: unknown }
+      if (typeof parsed.batchId === 'string') setLastBatchId(parsed.batchId)
+      else localStorage.removeItem('clive.plan.lastBatch')
+    } catch {
+      localStorage.removeItem('clive.plan.lastBatch')
+    }
+  }, [])
+  const dismissLastBatch = useCallback(() => {
+    localStorage.removeItem('clive.plan.lastBatch')
+    setLastBatchId(null)
+  }, [])
+  const undoLastBatch = useCallback(async () => {
+    if (!lastBatchId) return
+    try {
+      await undoPlan(lastBatchId)
+      handleSetStatus(i18n.t('plan.undoDone'), 'success')
+    } catch (err) {
+      handleSetStatus(String(err), 'error')
+    } finally {
+      // Journal consumed (or gone/already undone): the key has no further use.
+      localStorage.removeItem('clive.plan.lastBatch')
+      setLastBatchId(null)
+    }
+  }, [lastBatchId, handleSetStatus])
 
   const handleRename = useCallback(
     async (file: FileEntry, newName: string) => {
@@ -1451,7 +1523,25 @@ export default function App() {
 
         <StatusBar ctx={widgetCtx} chatOpen={chatOpen} onChat={() => setChatOpen((o) => !o)} />
       <AiOverlay ai={ai} />
-      <ChatDrawer open={chatOpen} onClose={() => setChatOpen(false)} ai={chat} />
+      <ChatDrawer
+        open={chatOpen}
+        onClose={() => setChatOpen(false)}
+        ai={chat}
+        onCreatePlan={(text) => void handleCreatePlan(text)}
+        canPlan={canPlan}
+      />
+      <PlanPanel ctrl={plan} onClose={plan.close} />
+      {lastBatchId && (
+        <div className="fixed bottom-12 left-1/2 z-50 flex -translate-x-1/2 items-center gap-2 rounded-lg border border-base-300 bg-base-200 px-3 py-1.5 text-xs shadow-lg">
+          <span>{t('plan.lastBatch')}</span>
+          <button className="btn btn-primary btn-xs" onClick={() => void undoLastBatch()}>
+            {t('plan.undoLast')}
+          </button>
+          <button className="btn btn-ghost btn-xs !min-h-0" aria-label={t('common.close')} onClick={dismissLastBatch}>
+            ✕
+          </button>
+        </div>
+      )}
       <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />
       {sidebarAdd && (
         <Modal title={t('sidebar.add')} onClose={() => setSidebarAdd(null)}>
