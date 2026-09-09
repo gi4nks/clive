@@ -219,7 +219,7 @@ function MessageBubble({
           <button
             data-bar-control
             className="btn btn-ghost btn-xs !min-h-0"
-            disabled={!canPlan}
+            disabled={!canPlan || !!m.streaming}
             title={canPlan ? t('plan.createBtn') : t('plan.tooBig')}
             aria-label={t('plan.createBtn')}
             onClick={() => onCreatePlan?.(m.content)}

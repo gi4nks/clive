@@ -148,6 +148,16 @@ describe('ChatDrawer', () => {
     expect(onCreatePlan).not.toHaveBeenCalled()
   })
 
+  it('🪄 is disabled while the assistant message is still streaming (Minor 4)', () => {
+    const onCreatePlan = vi.fn()
+    const ai = makeAI({ messages: [{ role: 'assistant', content: 'parti', streaming: true }] })
+    render(<ChatDrawer open={true} onClose={vi.fn()} ai={ai as never} onCreatePlan={onCreatePlan} />)
+    const wand = screen.getByRole('button', { name: /plan\.createBtn/i })
+    expect(wand).toBeDisabled()
+    fireEvent.click(wand)
+    expect(onCreatePlan).not.toHaveBeenCalled()
+  })
+
   it('copy button writes raw markdown to clipboard and confirms with Copiato!', async () => {
     vi.useFakeTimers()
     const writeText = vi.fn().mockResolvedValue(undefined)

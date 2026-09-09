@@ -46,6 +46,7 @@ import { ChatDrawer } from './ai/ChatDrawer'
 import { usePlan } from './ai/usePlan'
 import { PlanPanel } from './ai/PlanPanel'
 import { createPlanFromMessage, PLAN_MAX_ENTRIES } from './ai/createPlanFromMessage'
+import { writeLastBatch, readLastBatch, clearLastBatch } from './ai/planJournalStore'
 import { fullModelId } from './ai/settings'
 import { SettingsModal } from './settings/SettingsModal'
 import { TransferPicker } from './TransferPicker'
@@ -580,6 +581,9 @@ export default function App() {
 
   // --- AI Plan (Task 6): App owns the pipeline; ChatDrawer only forwards 🪄. ---
   const plan = usePlan()
+  // Intentionally the RAW active-pane entries (not the search-filtered
+  // visibleEntries the pipeline uses): the cap guards the folder size itself,
+  // so being stricter than the listing sent is by design (R7).
   const canPlan = entries.length <= PLAN_MAX_ENTRIES
 
   const handleCreatePlan = useCallback(
@@ -601,33 +605,27 @@ export default function App() {
     [visibleEntries, currentPath, cfg.guardSystemLocations, ai.sel, plan.setPlan, handleSetStatus],
   )
 
+  const [lastBatchId, setLastBatchId] = useState<string | null>(null)
+
   // R11: persist the last successfully applied batch so undo survives a restart.
   useEffect(() => {
     if (plan.phase !== 'applied' || !plan.batchId) return
-    try {
-      localStorage.setItem(
-        'clive.plan.lastBatch',
-        JSON.stringify({ batchId: plan.batchId, rootPath: plan.plan?.rootPath ?? null, createdAt: Date.now() }),
-      )
-    } catch {
-      /* storage full/unavailable — undo banner is best-effort */
-    }
+    writeLastBatch({ batchId: plan.batchId, rootPath: plan.plan?.rootPath ?? null, createdAt: Date.now() })
   }, [plan.phase, plan.batchId, plan.plan?.rootPath])
 
-  const [lastBatchId, setLastBatchId] = useState<string | null>(null)
+  // The journal is consumed by an in-panel undo: never keep a stale restart claim.
   useEffect(() => {
-    const raw = localStorage.getItem('clive.plan.lastBatch')
-    if (!raw) return
-    try {
-      const parsed = JSON.parse(raw) as { batchId?: unknown }
-      if (typeof parsed.batchId === 'string') setLastBatchId(parsed.batchId)
-      else localStorage.removeItem('clive.plan.lastBatch')
-    } catch {
-      localStorage.removeItem('clive.plan.lastBatch')
-    }
+    if (plan.phase !== 'undone') return
+    clearLastBatch()
+    setLastBatchId(null)
+  }, [plan.phase])
+
+  useEffect(() => {
+    const id = readLastBatch()
+    if (id) setLastBatchId(id)
   }, [])
   const dismissLastBatch = useCallback(() => {
-    localStorage.removeItem('clive.plan.lastBatch')
+    clearLastBatch()
     setLastBatchId(null)
   }, [])
   const undoLastBatch = useCallback(async () => {
@@ -639,7 +637,7 @@ export default function App() {
       handleSetStatus(String(err), 'error')
     } finally {
       // Journal consumed (or gone/already undone): the key has no further use.
-      localStorage.removeItem('clive.plan.lastBatch')
+      clearLastBatch()
       setLastBatchId(null)
     }
   }, [lastBatchId, handleSetStatus])
