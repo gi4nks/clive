@@ -194,4 +194,32 @@ describe('usePlan', () => {
     expect(result.current.error).toBe('listen boom')
     expect(api.applyPlan).not.toHaveBeenCalled()
   })
+
+  it('folder-path edit escaping the plan root is rejected (review I-2)', () => {
+    const { result } = renderHook(() => usePlan())
+    act(() => result.current.setPlan(makePlan([cleanOp()])))
+    act(() => result.current.updateOp('c1', { path: '/root/../escape' }))
+    expect(result.current.plan?.ops[0]?.issue).toBe('invalid folder path')
+    expect(result.current.plan?.ops[0]?.included).toBe(false)
+    act(() => result.current.updateOp('c1', { path: '/etc' }))
+    expect(result.current.plan?.ops[0]?.issue).toBe('invalid folder path')
+    act(() => result.current.updateOp('c1', { path: '/root/a//b' }))
+    expect(result.current.plan?.ops[0]?.issue).toBe('invalid folder path')
+    // a valid in-root edit clears the LOCAL issue and the op is re-togglable
+    act(() => result.current.updateOp('c1', { path: '/root/Fine' }))
+    expect(result.current.plan?.ops[0]?.issue).toBeUndefined()
+    act(() => result.current.toggleOp('c1'))
+    expect(result.current.plan?.ops[0]?.included).toBe(true)
+  })
+
+  it('rename edit with a backslash is rejected like the Rust engine does (I-2)', () => {
+    const op: PlanOp = { id: 'r1', kind: 'rename', path: '/root/a.txt', newName: 'a', included: true }
+    const { result } = renderHook(() => usePlan())
+    act(() => result.current.setPlan(makePlan([op])))
+    act(() => result.current.updateOp('r1', { newName: 'bad\\name' }))
+    expect(result.current.plan?.ops[0]?.issue).toBe('invalid name')
+    expect(result.current.plan?.ops[0]?.included).toBe(false)
+    act(() => result.current.updateOp('r1', { newName: 'good.txt' }))
+    expect(result.current.plan?.ops[0]?.issue).toBeUndefined()
+  })
 })

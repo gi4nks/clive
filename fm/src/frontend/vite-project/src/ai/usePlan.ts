@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { applyPlan, undoPlan, onPlanProgress } from '../api.js'
 import type { ApplyReport, PlanProgress } from '../api.js'
 import type { Plan, PlanOp } from './plan.js'
+import { validateFolderPath } from './plan.js'
+import { validateNewName } from './safety.js'
 
 /** Panel lifecycle. Task 5 renders on these values:
  * - 'review'   → tree + checkboxes, Apply enabled
@@ -20,8 +22,10 @@ const newBatchId = (): string => {
   return c.randomUUID?.() ?? `plan-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
 }
 
+/** Panel rename edits: same safety layer the one-shot flow uses, plus the
+ * backslash the Rust rename rejects (validateNewName doesn't check it). */
 const isBadName = (n: string): boolean =>
-  !n.trim() || n === '.' || n === '..' || n.includes('/') || n.includes('\\')
+  !validateNewName(n).ok || n.includes('\\')
 
 export function usePlan() {
   const [plan, setPlanState] = useState<Plan | null>(null)
@@ -93,6 +97,22 @@ export function usePlan() {
     )
   }, [])
 
+  /** Panel folder-path edits must satisfy the same rules expandPlan enforced:
+   * stay inside the plan root, relative to it, with valid segments (no `..`
+   * traversal, absolute escapes or empty segments). Rust stays authoritative;
+   * this restores the client-side invariant (review I-2). */
+  const folderEditIssue = (absPath: string): string | null => {
+    const rootPath = planRef.current?.rootPath
+    const p = absPath.replace(/\/+$/, '')
+    if (!p.trim()) return 'empty path'
+    if (!rootPath) return null
+    const root = rootPath.replace(/\/+$/, '') || '/'
+    const prefix = root === '/' ? '/' : `${root}/`
+    const rel = p === root ? '' : p.startsWith(prefix) ? p.slice(prefix.length) : null
+    if (rel === null) return 'invalid folder path'
+    return validateFolderPath(rel).ok ? null : 'invalid folder path'
+  }
+
   const updateOp = useCallback((id: string, patch: PlanOpPatch) => {
     // Authoritative ops are locked: edits are rejected outright, so their
     // issue can neither be overwritten nor cleared (origin-based, R12).
@@ -103,7 +123,7 @@ export function usePlan() {
       let issue: string | null = null
       if (o.kind === 'createFolder' && patch.path !== undefined) {
         next = { ...o, path: patch.path }
-        if (!patch.path.trim()) issue = 'empty path'
+        issue = folderEditIssue(patch.path)
       } else if (o.kind === 'rename' && patch.newName !== undefined) {
         next = { ...o, newName: patch.newName }
         if (isBadName(patch.newName)) issue = 'invalid name'
