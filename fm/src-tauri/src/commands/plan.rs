@@ -518,35 +518,47 @@ fn undo_ops(
     Ok(report)
 }
 
+/// Async entrypoints: the batch runs on a spawn_blocking worker so a ~200-op
+/// plan never blocks the macOS main thread and `plan-progress` events stream
+/// to the webview *during* the run (review I-3). Unit tests keep calling the
+/// sync `apply_ops`/`undo_ops` workers directly.
 #[tauri::command]
-pub fn apply_plan(
+pub async fn apply_plan(
     app: tauri::AppHandle,
     batch_id: String,
     ops: Vec<PlanOpInput>,
     allow_system: bool,
 ) -> Result<ApplyReport, String> {
-    apply_ops(&batch_id, &ops, allow_system, &mut |done, total, current_id| {
-        app.emit(
-            "plan-progress",
-            serde_json::json!({ "done": done, "total": total, "currentId": current_id }),
-        )
-        .ok();
+    tauri::async_runtime::spawn_blocking(move || {
+        apply_ops(&batch_id, &ops, allow_system, &mut |done, total, current_id| {
+            app.emit(
+                "plan-progress",
+                serde_json::json!({ "done": done, "total": total, "currentId": current_id }),
+            )
+            .ok();
+        })
     })
+    .await
+    .map_err(|e| format!("apply_plan worker failed: {e}"))?
 }
 
 #[tauri::command]
-pub fn undo_plan(
+pub async fn undo_plan(
     app: tauri::AppHandle,
     batch_id: String,
     allow_system: bool,
 ) -> Result<ApplyReport, String> {
-    undo_ops(&batch_id, allow_system, &mut |done, total, current_id| {
-        app.emit(
-            "plan-progress",
-            serde_json::json!({ "done": done, "total": total, "currentId": current_id }),
-        )
-        .ok();
+    tauri::async_runtime::spawn_blocking(move || {
+        undo_ops(&batch_id, allow_system, &mut |done, total, current_id| {
+            app.emit(
+                "plan-progress",
+                serde_json::json!({ "done": done, "total": total, "currentId": current_id }),
+            )
+            .ok();
+        })
     })
+    .await
+    .map_err(|e| format!("undo_plan worker failed: {e}"))?
 }
 
 #[cfg(test)]
