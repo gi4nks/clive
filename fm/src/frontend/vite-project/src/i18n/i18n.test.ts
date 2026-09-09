@@ -3,6 +3,7 @@ import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import i18n from './index'
 import en from './locales/en.json'
+import itLocale from './locales/it.json'
 
 // Recursively collect source files under src/, excluding the i18n locales dir.
 function walk(dir: string, acc: string[] = []): string[] {
@@ -22,26 +23,47 @@ function has(obj: Record<string, unknown>, dotted: string): boolean {
   return dotted.split('.').reduce<unknown>((o, k) => (o && typeof o === 'object' ? (o as Record<string, unknown>)[k] : undefined), obj) !== undefined
 }
 
+/** Recursively flatten a locale object into dotted leaf keys. */
+function flattenKeys(obj: Record<string, unknown>, prefix = ''): string[] {
+  return Object.entries(obj).flatMap(([k, v]) =>
+    v && typeof v === 'object' && !Array.isArray(v)
+      ? flattenKeys(v as Record<string, unknown>, `${prefix}${k}.`)
+      : [`${prefix}${k}`],
+  )
+}
+
 describe('i18n coverage guard (english-ui)', () => {
   it('every t("…") key used in source exists in en.json', () => {
     const missing: string[] = []
     for (const { f, src } of contents) {
       const re = /['"]([a-zA-Z0-9_.]+)['"]/g
-      // Only inspect keys that look like translation keys (dot namespaced) used with t(...)
-      const tre = /\bt\(\s*['"]([a-z0-9_.]+)['"]\s*([,)])/g
+      // Only inspect keys that look like translation keys (dot namespaced) used with t(...).
+      // The class includes A-Z: camelCase keys (plan.createBtn, ai.keySpace, …) must be
+      // checked too — a lowercase-only class silently skipped all of them. Dynamic keys
+      // built from template literals can't match statically; that's acceptable.
+      const tre = /\bt\(\s*['"]([a-zA-Z0-9_.]+)['"]\s*([,)])/g
       let m: RegExpExecArray | null
       while ((m = tre.exec(src))) {
         const key = m[1]
-        const near = src.slice(m.index, m.index + 80)
-        const usesCount = /\bcount\b/.test(near)
         if (key.includes('.')) {
-          const ok = usesCount ? has(en, `${key}_one`) || has(en, `${key}_other`) : has(en, key)
+          // With `count`, i18next resolves key_one/key_other and falls back to
+          // the base key (valid for "{{count}} items" single-form strings).
+          // Accept any of the three; flag only when none exists.
+          const ok = has(en, key) || has(en, `${key}_one`) || has(en, `${key}_other`)
           if (!ok) missing.push(`${key} (${f.split('/').pop()})`)
         }
       }
       void re
     }
     expect(missing).toEqual([])
+  })
+
+  it('en.json and it.json expose exactly the same key set (parity)', () => {
+    const enKeys = new Set(flattenKeys(en as Record<string, unknown>))
+    const itKeys = new Set(flattenKeys(itLocale as Record<string, unknown>))
+    const missingIt = [...enKeys].filter((k) => !itKeys.has(k))
+    const missingEn = [...itKeys].filter((k) => !enKeys.has(k))
+    expect({ missingIt, missingEn }).toEqual({ missingIt: [], missingEn: [] })
   })
 
   it('no Italian UI string literals remain in migrated components', () => {
