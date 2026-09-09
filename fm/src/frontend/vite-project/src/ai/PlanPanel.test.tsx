@@ -9,7 +9,7 @@ vi.mock('react-i18next', () => ({
   initReactI18next: { type: '3rdParty', init: () => {} },
 }))
 
-import { PlanPanel } from './PlanPanel.js'
+import { PlanPanel, buildPlanTree } from './PlanPanel.js'
 import type { Plan, PlanOp } from './plan.js'
 import type { ApplyReport } from '../api.js'
 import type { PlanPhase } from './usePlan.js'
@@ -156,5 +156,23 @@ describe('PlanPanel', () => {
     expect(t1).toBeTruthy()
     fireEvent.click(t1 as HTMLInputElement)
     expect(c.toggleOp).toHaveBeenCalledWith('t1')
+  })
+
+  it('buildPlanTree nests move/trash/rename under their folders (A parent of A/B)', () => {
+    const tree = buildPlanTree(fullPlan())
+    expect(tree.path).toBe('/root')
+    // root-level rows: rename + trash live in their source folder (the root)
+    expect(tree.items.map((o) => o.id).sort()).toEqual(['r1', 't1'])
+    const A = tree.children.find((c) => c.label === 'A')
+    expect(A).toBeTruthy()
+    expect(A!.createOp?.id).toBe('f1')
+    // move m1 (dest /root/A) is a row of node A
+    expect(A!.items.map((o) => o.id)).toEqual(['m1'])
+    const B = A!.children.find((c) => c.label === 'B')
+    expect(B).toBeTruthy()
+    // A/B createFolder renders A as parent of B
+    expect(B!.createOp?.id).toBe('f2')
+    // move m2 (dest /root/A/B) is a row of node B, not of A or the root
+    expect(B!.items.map((o) => o.id)).toEqual(['m2'])
   })
 })

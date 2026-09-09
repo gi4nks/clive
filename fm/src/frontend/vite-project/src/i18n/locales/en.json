@@ -154,6 +154,7 @@
     "provider": "Provider",
     "model": "Model",
     "providerUnreachable": "Provider unreachable",
+    "keySpace": "Space",
     "emptyResult": "The model returned no text. Try again or pick another model.",
     "cloudWarn": "☁️ Cloud provider: the contents of selected files leave this machine.",
     "rename": "Rename",
