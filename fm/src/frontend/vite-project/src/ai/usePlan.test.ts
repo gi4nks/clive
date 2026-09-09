@@ -1,0 +1,129 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { renderHook, act } from '@testing-library/react'
+import { usePlan } from './usePlan.js'
+import type { ApplyReport } from '../api.js'
+import type { Plan, PlanOp } from './plan.js'
+import * as api from '../api.js'
+
+vi.mock('../api.js', () => ({
+  applyPlan: vi.fn(),
+  undoPlan: vi.fn(),
+  onPlanProgress: vi.fn(),
+}))
+
+const report = (batchId: string): ApplyReport => ({ applied: 1, skipped: 0, failed: [], batchId })
+
+const makePlan = (ops: PlanOp[]): Plan => ({ rootPath: '/root', ops, unchanged: [], warnings: [] })
+
+const cleanOp = (): PlanOp => ({ id: 'c1', kind: 'createFolder', path: '/root/X', included: true })
+const issueOp = (): PlanOp => ({ id: 'm9', kind: 'move', path: '/root/f.txt', destDir: '/root/X', included: false, issue: 'target exists' })
+
+let unsub: ReturnType<typeof vi.fn>
+beforeEach(() => {
+  vi.clearAllMocks()
+  unsub = vi.fn()
+  vi.mocked(api.onPlanProgress).mockResolvedValue(unsub)
+})
+
+describe('usePlan', () => {
+  it('setPlan moves to review and clears run state', () => {
+    const { result } = renderHook(() => usePlan())
+    act(() => result.current.setPlan(makePlan([cleanOp()])))
+    expect(result.current.phase).toBe('review')
+    expect(result.current.plan?.ops).toHaveLength(1)
+    expect(result.current.report).toBeNull()
+    expect(result.current.batchId).toBeNull()
+  })
+
+  it('toggleOp flips clean ops but never enables an issue op', () => {
+    const { result } = renderHook(() => usePlan())
+    act(() => result.current.setPlan(makePlan([cleanOp(), issueOp()])))
+    const untouched = result.current.plan?.ops[1]
+    act(() => result.current.toggleOp('c1'))
+    expect(result.current.plan?.ops[0].included).toBe(false)
+    act(() => result.current.toggleOp('c1'))
+    expect(result.current.plan?.ops[0].included).toBe(true)
+    // immutability: toggling c1 preserved the untouched op object by reference
+    expect(result.current.plan?.ops[1]).toBe(untouched)
+    act(() => result.current.toggleOp('m9'))
+    expect(result.current.plan?.ops[1].included).toBe(false)
+    act(() => result.current.toggleOp('m9'))
+    expect(result.current.plan?.ops[1].included).toBe(false)
+  })
+
+  it('apply sends only included ops with a uuid batchId and lands on applied', async () => {
+    vi.mocked(api.applyPlan).mockResolvedValue(report('any'))
+    const { result } = renderHook(() => usePlan())
+    act(() => result.current.setPlan(makePlan([cleanOp(), issueOp(), { id: 'off', kind: 'trash', path: '/root/g', included: false }])))
+    await act(async () => { await result.current.apply() })
+    expect(api.applyPlan).toHaveBeenCalledTimes(1)
+    const [id, ops] = vi.mocked(api.applyPlan).mock.calls[0]
+    expect(typeof id).toBe('string')
+    expect(id.length).toBeGreaterThan(10)
+    expect(ops).toHaveLength(1)
+    expect(ops?.[0]?.id).toBe('c1')
+    expect(result.current.batchId).toBe(id)
+    expect(result.current.report?.applied).toBe(1)
+    expect(result.current.phase).toBe('applied')
+    expect(api.onPlanProgress).toHaveBeenCalledTimes(1)
+    expect(unsub).toHaveBeenCalledTimes(1)
+  })
+
+  it('undo calls undoPlan with the same batchId and reaches undone', async () => {
+    vi.mocked(api.applyPlan).mockResolvedValue(report('any'))
+    vi.mocked(api.undoPlan).mockResolvedValue(report('any'))
+    const { result } = renderHook(() => usePlan())
+    act(() => result.current.setPlan(makePlan([cleanOp()])))
+    await act(async () => { await result.current.apply() })
+    const appliedId = result.current.batchId
+    await act(async () => { await result.current.undo() })
+    expect(api.undoPlan).toHaveBeenCalledWith(appliedId)
+    expect(result.current.phase).toBe('undone')
+    expect(result.current.undoReport).not.toBeNull()
+  })
+
+  it('apply failure surfaces error without losing plan; unsubscribe happens', async () => {
+    vi.mocked(api.applyPlan).mockRejectedValue(new Error('invalid batchId'))
+    const { result } = renderHook(() => usePlan())
+    act(() => result.current.setPlan(makePlan([cleanOp()])))
+    await act(async () => { await result.current.apply() })
+    expect(result.current.phase).toBe('error')
+    expect(result.current.error).toBe('invalid batchId')
+    expect(result.current.plan?.ops).toHaveLength(1)
+    expect(unsub).toHaveBeenCalledTimes(1)
+  })
+
+  it('updateOp edits createFolder path and recomputes local issues minimally', () => {
+    const { result } = renderHook(() => usePlan())
+    act(() => result.current.setPlan(makePlan([cleanOp(), issueOp()])))
+    act(() => result.current.updateOp('c1', { path: '/root/Other' }))
+    const c1 = result.current.plan?.ops[0]
+    expect(c1?.kind === 'createFolder' && c1.path).toBe('/root/Other')
+    expect(c1?.issue).toBeUndefined()
+    expect(c1?.included).toBe(true)
+    // empty path → issue set, op force-excluded
+    act(() => result.current.updateOp('c1', { path: '  ' }))
+    expect(result.current.plan?.ops[0]?.issue).toBe('empty path')
+    expect(result.current.plan?.ops[0]?.included).toBe(false)
+    // valid re-edit clears only the LOCAL issue and stays disabled
+    act(() => result.current.updateOp('c1', { path: '/root/Ok' }))
+    expect(result.current.plan?.ops[0]?.issue).toBeUndefined()
+    expect(result.current.plan?.ops[0]?.included).toBe(false)
+    // patching an op with a foreign (expandPlan) issue keeps it
+    act(() => result.current.updateOp('m9', { destDir: '/root/Y' }))
+    expect(result.current.plan?.ops[1]?.issue).toBe('target exists')
+    expect(result.current.plan?.ops[1]?.kind === 'move' && result.current.plan?.ops[1]?.destDir).toBe('/root/Y')
+  })
+
+  it('close resets everything to idle', async () => {
+    vi.mocked(api.applyPlan).mockResolvedValue(report('any'))
+    const { result } = renderHook(() => usePlan())
+    act(() => result.current.setPlan(makePlan([cleanOp()])))
+    await act(async () => { await result.current.apply() })
+    act(() => result.current.close())
+    expect(result.current.phase).toBe('idle')
+    expect(result.current.plan).toBeNull()
+    expect(result.current.report).toBeNull()
+    expect(result.current.batchId).toBeNull()
+  })
+})

@@ -1,5 +1,7 @@
 import { invoke } from '@tauri-apps/api/core'
+import { listen } from '@tauri-apps/api/event'
 import { getAppConfig } from './settings/appConfig'
+import type { PlanOp } from './ai/plan.js'
 
 /** Destructive ops pass `allowSystem`: when the guard is on, protected macOS
  * system locations are refused authoritatively in Rust. */
@@ -70,6 +72,16 @@ export interface TransferResult {
 export const transferItems = (paths: string[], dstDir: string, mode: 'copy' | 'move') =>
   invoke<TransferResult>('transfer_items', { paths, dstDir, mode, allowSystem: allowSystem() })
 export const gatewayBase = () => invoke<string>('gateway_base')
+
+export interface ApplyFailedOp { id: string; error: string }
+export interface ApplyReport { applied: number; skipped: number; failed: ApplyFailedOp[]; batchId: string }
+export interface PlanProgress { done: number; total: number; currentId: string }
+export const applyPlan = (batchId: string, ops: PlanOp[]) =>
+  invoke<ApplyReport>('apply_plan', { batchId, ops, allowSystem: allowSystem() })
+export const undoPlan = (batchId: string) =>
+  invoke<ApplyReport>('undo_plan', { batchId, allowSystem: allowSystem() })
+export const onPlanProgress = (cb: (p: PlanProgress) => void) =>
+  listen<PlanProgress>('plan-progress', (e) => cb(e.payload))
 
 export interface BuildInfo { version: string; buildEpoch: number }
 export const buildInfo = () => invoke<BuildInfo>('build_info')
