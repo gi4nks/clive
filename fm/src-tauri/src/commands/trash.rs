@@ -29,9 +29,14 @@ fn now_secs() -> u64 {
 #[allow(dead_code)]
 static COUNTER: AtomicU64 = AtomicU64::new(0);
 
+/// Serializes every test that mutates process-global trash env vars, shared
+/// across command modules (trash + plan) so parallel threads can't leak.
+#[cfg(test)]
+pub(crate) static TRASH_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 /// Directory where trashed FILES live so they appear in the macOS (Dock) Trash:
 /// `~/.Trash` (overridable via `CLIVE_TRASH_DIR`, used by tests).
-fn trash_slot_dir() -> PathBuf {
+pub(crate) fn trash_slot_dir() -> PathBuf {
     if let Some(dir) = std::env::var_os("CLIVE_TRASH_DIR") {
         return PathBuf::from(dir);
     }
@@ -267,12 +272,10 @@ pub fn trash_root_json() -> serde_json::Value {
 mod tests {
     use super::*;
     use std::collections::HashSet;
-    use std::sync::Mutex;
 
-    // The trash commands read process-global env vars (slot dir + journal).
-    // Serialize every env-touching test so parallel test threads can't leak
-    // into each other or into the developer's real ~/.Trash.
-    static TRASH_TEST_LOCK: Mutex<()> = Mutex::new(());
+    // Env-locking static lives at module level (pub(crate), brought in via
+    // `use super::*`) so plan.rs tests can share it: both modules mutate
+    // CLIVE_TRASH_DIR process-globally.
 
     #[test]
     fn restore_target_uses_original_when_free() {

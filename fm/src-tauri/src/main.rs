@@ -3,6 +3,7 @@
 mod commands {
     pub mod clipboard;
     pub mod filesystem;
+    pub mod plan;
     pub mod trash;
 }
 
@@ -67,6 +68,8 @@ fn main() {
             commands::clipboard::paste_paths,
             commands::clipboard::clipboard_info,
             commands::clipboard::clear_clipboard,
+            commands::plan::apply_plan,
+            commands::plan::undo_plan,
             gateway::gateway_base,
             gateway::ai_get_config,
             gateway::ai_set_provider,
