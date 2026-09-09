@@ -102,6 +102,15 @@ fn journal_path(batch_id: &str) -> PathBuf {
     journal_dir().join(format!("{batch_id}.json"))
 }
 
+/// batchId maps directly onto a journal filename: reject anything that could
+/// escape the journal dir (traversal, absolute paths). Authoritative gate.
+fn validate_batch_id(batch_id: &str) -> Result<(), String> {
+    if batch_id.is_empty() || batch_id.contains('/') || batch_id.contains('\\') || batch_id.contains("..") {
+        return Err("invalid batchId".to_string());
+    }
+    Ok(())
+}
+
 /// Rewrite the whole journal atomically (tmp + rename) so a crash mid-batch
 /// keeps every previously applied inverse durable.
 fn write_journal(journal: &JournalFile) -> Result<(), String> {
@@ -172,6 +181,12 @@ enum Outcome {
     Failed(String),
 }
 
+/// True when `anc` is `p` itself or one of its ancestors (lexical, component
+/// wise — `/Xy` is NOT inside `/X`).
+fn is_ancestor_or_same(anc: &Path, p: &Path) -> bool {
+    p.strip_prefix(anc).is_ok()
+}
+
 fn run_op(op: &PlanOpInput, allow_system: bool) -> Outcome {
     match op {
         PlanOpInput::CreateFolder { path, .. } => {
@@ -198,6 +213,9 @@ fn run_op(op: &PlanOpInput, allow_system: bool) -> Outcome {
             }
         }
         PlanOpInput::Rename { path, new_name, .. } => {
+            if new_name.contains('/') || new_name.contains('\\') || new_name == "." || new_name == ".." {
+                return Outcome::Failed("invalid name".into());
+            }
             let src = normalize(path);
             let dst = src
                 .parent()
@@ -233,6 +251,14 @@ fn run_op(op: &PlanOpInput, allow_system: bool) -> Outcome {
             if let Some(e) = guard_err(allow_system, &[&src, &dest_dir, &dst]) {
                 return Outcome::Failed(e);
             }
+            // reject moving a directory into its own subtree (fs::rename would
+            // EINVAL and move_path's copy-fallback would churn the whole tree)
+            if is_ancestor_or_same(&src, &dest_dir) {
+                return Outcome::Failed("invalid destination".into());
+            }
+            if src == trash_slot_dir() {
+                return Outcome::Failed("cannot move the trash directory".into());
+            }
             if !src.exists() {
                 return Outcome::Skipped;
             }
@@ -255,13 +281,17 @@ fn run_op(op: &PlanOpInput, allow_system: bool) -> Outcome {
             if let Some(e) = guard_err(allow_system, &[&src]) {
                 return Outcome::Failed(e);
             }
+            let root = trash_slot_dir();
+            // trashing the trash dir (or an ancestor of it) is nonsense
+            if is_ancestor_or_same(&src, &root) {
+                return Outcome::Failed("cannot trash the trash directory".into());
+            }
             let meta = match fs::metadata(&src) {
                 Ok(m) => m,
                 Err(_) => return Outcome::Skipped,
             };
             // R4: our own move into the shared slot dir — never delete_to_trash,
             // which would double-bookkeep the app trash journal.
-            let root = trash_slot_dir();
             if let Err(e) = fs::create_dir_all(&root) {
                 return Outcome::Failed(e.to_string());
             }
@@ -291,6 +321,7 @@ fn apply_ops(
     allow_system: bool,
     on_progress: &mut dyn FnMut(usize, usize, &str),
 ) -> Result<ApplyReport, String> {
+    validate_batch_id(batch_id)?;
     let dir = journal_dir();
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
 
@@ -441,6 +472,7 @@ fn undo_ops(
     allow_system: bool,
     on_progress: &mut dyn FnMut(usize, usize, &str),
 ) -> Result<ApplyReport, String> {
+    validate_batch_id(batch_id)?;
     let jpath = journal_path(batch_id);
     if !jpath.exists() {
         let undone = jpath.with_extension("undone.json");
@@ -477,8 +509,12 @@ fn undo_ops(
         on_progress(i + 1, total, &current_id);
     }
 
-    let done_path = jpath.with_extension("undone.json");
-    fs::rename(&jpath, &done_path).map_err(|e| e.to_string())?;
+    // Only consume the journal when something was actually restored: if every
+    // inverse failed (e.g. Finder emptied), keep it so a retry isn't lost.
+    if report.applied > 0 {
+        let done_path = jpath.with_extension("undone.json");
+        fs::rename(&jpath, &done_path).map_err(|e| e.to_string())?;
+    }
     Ok(report)
 }
 
@@ -702,6 +738,133 @@ mod tests {
         let j: JournalFile = serde_json::from_str(&raw).unwrap();
         assert_eq!(j.entries.len(), 1);
         assert!(matches!(j.entries[0], Inverse::RemoveDir { .. }));
+
+        clear_env(&base);
+    }
+
+    #[test]
+    fn rejects_traversal_batch_id() {
+        let _guard = TRASH_TEST_LOCK.lock().unwrap();
+        let base = temp_base("traversal");
+        set_env(&base);
+        let ops = vec![PlanOpInput::CreateFolder {
+            id: "c1".into(),
+            path: s(&base.join("root/evil")),
+            included: true,
+        }];
+        for bad in ["../../evil", "../x", "", "a/b", "a\\b", "x..y"] {
+            assert_eq!(
+                apply_ops(bad, &ops, false, &mut |_, _, _| {}).err(),
+                Some("invalid batchId".to_string()),
+                "batchId {bad:?} must be rejected"
+            );
+            assert_eq!(
+                undo_ops(bad, false, &mut |_, _, _| {}).err(),
+                Some("invalid batchId".to_string())
+            );
+        }
+        // validation precedes any journal-dir creation: nothing touched on disk
+        assert!(!base.join("journal").exists());
+        assert!(!base.join("root").exists());
+        clear_env(&base);
+    }
+
+    #[test]
+    fn rejects_move_into_own_subtree() {
+        let _guard = TRASH_TEST_LOCK.lock().unwrap();
+        let base = temp_base("subtree");
+        let root = base.join("root");
+        fs::create_dir_all(root.join("X/sub")).unwrap();
+        fs::write(root.join("X/sub/f.txt"), b"F").unwrap();
+        set_env(&base);
+
+        let ops = vec![PlanOpInput::Move {
+            id: "m1".into(),
+            path: s(&root.join("X")),
+            dest_dir: s(&root.join("X/sub")),
+            included: true,
+        }];
+        let report = apply_ops("st1", &ops, false, &mut |_, _, _| {}).unwrap();
+        assert_eq!(report.applied, 0);
+        assert_eq!(report.failed.len(), 1);
+        assert_eq!(report.failed[0].error, "invalid destination");
+
+        // self-move (dest == src) rejected too
+        let ops2 = vec![PlanOpInput::Move {
+            id: "m2".into(),
+            path: s(&root.join("X")),
+            dest_dir: s(&root.join("X")),
+            included: true,
+        }];
+        let r2 = apply_ops("st2", &ops2, false, &mut |_, _, _| {}).unwrap();
+        assert_eq!(r2.failed[0].error, "invalid destination");
+
+        // nothing executed or journaled
+        assert_eq!(fs::read(root.join("X/sub/f.txt")).unwrap(), b"F");
+        for b in ["st1", "st2"] {
+            let raw = fs::read_to_string(journal_path(b)).unwrap();
+            let j: JournalFile = serde_json::from_str(&raw).unwrap();
+            assert!(j.entries.is_empty());
+        }
+        clear_env(&base);
+    }
+
+    #[test]
+    fn rejects_rename_with_path_separator() {
+        let _guard = TRASH_TEST_LOCK.lock().unwrap();
+        let base = temp_base("pathy");
+        let root = base.join("root");
+        fs::create_dir_all(&root).unwrap();
+        fs::write(root.join("a.txt"), b"A").unwrap();
+        set_env(&base);
+
+        for bad in ["X/b.txt", "b/c", ".", "..", "a\\b"] {
+            let ops = vec![PlanOpInput::Rename {
+                id: "r1".into(),
+                path: s(&root.join("a.txt")),
+                new_name: bad.into(),
+                included: true,
+            }];
+            let report = apply_ops("rn1", &ops, false, &mut |_, _, _| {}).unwrap();
+            assert_eq!(report.applied, 0, "newName {bad:?} must be rejected");
+            assert_eq!(report.failed[0].error, "invalid name");
+        }
+        // nothing moved or journaled
+        assert_eq!(fs::read(root.join("a.txt")).unwrap(), b"A");
+        let raw = fs::read_to_string(journal_path("rn1")).unwrap();
+        let j: JournalFile = serde_json::from_str(&raw).unwrap();
+        assert!(j.entries.is_empty());
+        clear_env(&base);
+    }
+
+    #[test]
+    fn undo_keeps_journal_when_nothing_applied() {
+        let _guard = TRASH_TEST_LOCK.lock().unwrap();
+        let base = temp_base("keepend");
+        let root = base.join("root");
+        fs::create_dir_all(&root).unwrap();
+        fs::write(root.join("f.txt"), b"F").unwrap();
+        set_env(&base);
+
+        let ops = vec![PlanOpInput::Trash { id: "t1".into(), path: s(&root.join("f.txt")), included: true }];
+        apply_ops("kd1", &ops, false, &mut |_, _, _| {}).unwrap();
+
+        // simulate "Finder emptied": the trash slot is gone → every inverse fails
+        let tdir = trash_slot_dir();
+        for e in fs::read_dir(&tdir).unwrap() {
+            let _ = fs::remove_file(e.unwrap().path());
+        }
+        let undo = undo_ops("kd1", false, &mut |_, _, _| {}).unwrap();
+        assert_eq!(undo.applied, 0);
+        assert_eq!(undo.failed[0].error, "not in trash");
+        // journal NOT consumed: retry stays possible
+        assert!(journal_path("kd1").exists());
+        assert!(!journal_path("kd1").with_extension("undone.json").exists());
+
+        // trashing the trash dir itself is refused
+        let bad = vec![PlanOpInput::Trash { id: "t2".into(), path: s(&tdir), included: true }];
+        let r = apply_ops("kd2", &bad, false, &mut |_, _, _| {}).unwrap();
+        assert_eq!(r.failed[0].error, "cannot trash the trash directory");
 
         clear_env(&base);
     }
