@@ -4,6 +4,11 @@ import type { ChatController, ChatMessageState } from './useChat.js'
 import { CANCELLED_SENTINEL, type ChatAction } from './chat.js'
 import { Markdown } from './Markdown.js'
 
+/** Errors that mean the model emitted an inline op the app structurally cannot
+ *  perform (e.g. nested `create` for a `.keep`). The card is hidden and only
+ *  counted, so the user isn't spammed with disabled "target outside current dir". */
+export const SILENT_ISSUES: ReadonlySet<string> = new Set(['target outside current dir'])
+
 export interface ChatDrawerProps {
   open: boolean
   onClose: () => void
@@ -132,17 +137,20 @@ export function ChatDrawer({ open, onClose, ai, onCreatePlan, canPlan = true }: 
           {ai.messages.map((m, i) => (
             <div key={i} className={`mb-2 ${m.role === 'user' ? 'text-right' : ''}`}>
               <MessageBubble m={m} onCreatePlan={onCreatePlan} canPlan={canPlan} />
-              {m.actions?.map((a, j) => (
-                <ActionCard
-                  key={j}
-                  a={a}
-                  validation={ai.validateAction(i, j)}
-                  applied={m.actionsApplied?.[j]}
-                  error={m.actionErrors?.[j]}
-                  onApply={() => void ai.applyAction(i, j)}
-                  onCancel={() => ai.cancelAction(i, j)}
-                />
-              ))}
+              {m.actions
+                ?.map((a, j) => ({ a, j, v: ai.validateAction(i, j) }))
+                .filter((x) => !(x.v.ok === false && SILENT_ISSUES.has(x.v.error)))
+                .map(({ a, j, v }) => (
+                  <ActionCard
+                    key={j}
+                    a={a}
+                    validation={v}
+                    applied={m.actionsApplied?.[j]}
+                    error={m.actionErrors?.[j]}
+                    onApply={() => void ai.applyAction(i, j)}
+                    onCancel={() => ai.cancelAction(i, j)}
+                  />
+                ))}
             </div>
           ))}
           <div ref={endRef} />
@@ -293,7 +301,7 @@ function ActionCard({
 }
 
 function iconFor(type: ChatAction['type']): string {
-  return { rename: '🔄', organize: '📁', create: '✨', trash: '🗑️' }[type]
+  return { rename: '🔄', organize: '🗂️', createFolder: '📁', create: '✨', trash: '🗑️' }[type]
 }
 
 function describeAction(a: ChatAction): string {
@@ -302,6 +310,8 @@ function describeAction(a: ChatAction): string {
       return `${a.file} → ${a.newName}`
     case 'organize':
       return `${a.file} → ${a.dstFolder}/`
+    case 'createFolder':
+      return a.folder
     case 'create':
       return a.file
     case 'trash':

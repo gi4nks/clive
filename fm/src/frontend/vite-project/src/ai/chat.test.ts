@@ -89,6 +89,29 @@ describe('validateChatAction', () => {
     expect(r.ok).toBe(false)
     if (!r.ok) expect(r.error).toMatch(/already exists/i)
   })
+
+  it('accepts a nested createFolder', () => {
+    const r = validateChatAction({ type: 'createFolder', folder: 'Organizzato/00 Inbox' }, ctx)
+    expect(r.ok).toBe(true)
+  })
+
+  it('rejects createFolder with .. traversal', () => {
+    const r = validateChatAction({ type: 'createFolder', folder: 'a/../../b' }, ctx)
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.error).toMatch(/traversal|invalid/i)
+  })
+
+  it('rejects createFolder colliding with an existing top-level name', () => {
+    const r = validateChatAction({ type: 'createFolder', folder: 'other.txt/sub' }, { ...ctx, existingNames: ['other.txt'] })
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.error).toMatch(/exists/i)
+  })
+
+  it('marks createFolder protected when guard on', () => {
+    const r = validateChatAction({ type: 'createFolder', folder: 'Applications' }, { ...ctx, currentDir: '/', existingNames: [] })
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.error).toMatch(/system|protected/i)
+  })
 })
 
 describe('trimHistory', () => {

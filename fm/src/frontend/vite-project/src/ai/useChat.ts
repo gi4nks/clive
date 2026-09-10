@@ -160,6 +160,7 @@ export function useChat(deps: UseChatDeps) {
           currentDir: d.currentPath,
           existingNames: d.entries.map((e) => e.name),
           guardOn: d.guardOn,
+          entries: d.entries,
         })
         if (!v.ok) {
           setErrorAt(v.error)
@@ -176,6 +177,13 @@ export function useChat(deps: UseChatDeps) {
           const dstFile = `${folderPath}/${baseOf(a.file)}`
           const res = await applyPlan(fs, { folders: [folderPath], moves: [{ src: a.file, dst: dstFile }] })
           failures = res.failures
+        } else if (a.type === 'createFolder') {
+          const segs = a.folder.split('/').filter(Boolean)
+          let parent = d.currentPath
+          for (const seg of segs) {
+            await fs.createFolder(parent, seg)
+            parent = `${parent}/${seg}`
+          }
         } else if (a.type === 'create') {
           await writeFile(a.file, a.content)
         } else if (a.type === 'trash') {
@@ -226,6 +234,7 @@ export function useChat(deps: UseChatDeps) {
         currentDir: depsRef.current.currentPath,
         existingNames: depsRef.current.entries.map((e) => e.name),
         guardOn: depsRef.current.guardOn,
+        entries: depsRef.current.entries,
       })
       return v.ok ? { ok: true } : { ok: false, error: v.error }
     },

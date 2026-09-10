@@ -130,6 +130,23 @@ describe('useChat', () => {
     expect(fsBridge.moveToTrash).not.toHaveBeenCalled()
   })
 
+  it('applyAction(createFolder) calls fs.createFolder once per path segment', async () => {
+    vi.mocked(runtime.streamChat).mockReturnValue(
+      fakeStream(['<<<ACTIONS>>>\n{"actions":[{"type":"createFolder","folder":"Organizzato/00 Inbox"}]}\n<<<END>>>'])() as never,
+    )
+    const { result } = renderHook(() => useChat(deps()))
+    await act(async () => {
+      await result.current.send('go')
+    })
+    await act(async () => {
+      await result.current.applyAction(1, 0)
+    })
+    const cf = vi.mocked(fsBridge.fs.createFolder)
+    expect(cf).toHaveBeenCalledTimes(2)
+    expect(cf).toHaveBeenNthCalledWith(1, '/d', 'Organizzato')
+    expect(cf).toHaveBeenNthCalledWith(2, '/d/Organizzato', '00 Inbox')
+  })
+
   it('applyAction(organize) creates the folder and moves the file', async () => {
     vi.mocked(runtime.streamChat).mockReturnValue(
       fakeStream(['<<<ACTIONS>>>\n{"actions":[{"type":"organize","file":"/d/a.txt","dstFolder":"docs"}]}\n<<<END>>>'])() as never,

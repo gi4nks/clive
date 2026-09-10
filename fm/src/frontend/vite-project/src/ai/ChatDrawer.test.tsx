@@ -55,6 +55,31 @@ describe('ChatDrawer', () => {
     expect(screen.getAllByRole('button', { name: /apply/i }).length).toBeGreaterThan(0)
   })
 
+  it('renders a createFolder action card', () => {
+    const ai = makeAI({
+      messages: [
+        { role: 'user', content: 'crea cartelle' },
+        { role: 'assistant', content: 'ok', actions: [{ type: 'createFolder', folder: 'Organizzato/00 Inbox' }] },
+      ],
+    })
+    render(<ChatDrawer open={true} onClose={vi.fn()} ai={ai as never} />)
+    expect(screen.getByText('Organizzato/00 Inbox')).toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: /apply/i }).length).toBeGreaterThan(0)
+  })
+
+  it('hides cards whose action is structurally unsatisfiable (target outside current dir)', () => {
+    const ai = makeAI({
+      messages: [
+        { role: 'user', content: 'x' },
+        { role: 'assistant', content: 'ok', actions: [{ type: 'create', file: '/Desktop/Organizzato/00 Inbox/.keep', content: '' }] },
+      ],
+      validateAction: vi.fn(() => ({ ok: false, error: 'target outside current dir' })),
+    })
+    render(<ChatDrawer open={true} onClose={vi.fn()} ai={ai as never} />)
+    expect(screen.queryByText('.keep')).toBeNull()
+    expect(screen.queryAllByRole('button', { name: /apply/i })).toHaveLength(0)
+  })
+
   it('cancelled action shows chat.cancelled via CANCELLED_SENTINEL contract', () => {
     const ai = makeAI({
       messages: [

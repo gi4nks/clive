@@ -6,6 +6,8 @@
 
 import { validateNewName } from './safety.js'
 import { isProtectedPath } from '../systemGuard.js'
+import { validateFolderPath } from './plan.js'
+import type { FileEntry } from '../api.js'
 
 export const ACTIONS_OPEN = '<<<ACTIONS>>>'
 export const ACTIONS_CLOSE = '<<<END>>>'
@@ -13,18 +15,19 @@ export const ACTIONS_CLOSE = '<<<END>>>'
 /** Stable sentinel stored in `actionErrors` when the user cancels an action card. */
 export const CANCELLED_SENTINEL = 'chat-cancelled'
 
-export type ChatActionType = 'rename' | 'organize' | 'create' | 'trash'
+export type ChatActionType = 'rename' | 'organize' | 'createFolder' | 'create' | 'trash'
 
 export interface RenameAction { type: 'rename'; file: string; newName: string }
 export interface OrganizeAction { type: 'organize'; file: string; dstFolder: string }
+export interface CreateFolderAction { type: 'createFolder'; folder: string }
 export interface CreateAction { type: 'create'; file: string; content: string }
 export interface TrashAction { type: 'trash'; file: string }
 
-export type ChatAction = RenameAction | OrganizeAction | CreateAction | TrashAction
+export type ChatAction = RenameAction | OrganizeAction | CreateFolderAction | CreateAction | TrashAction
 
 export interface ParsedActions { text: string; actions: ChatAction[] }
 
-const ACTION_TYPES = new Set<ChatActionType>(['rename', 'organize', 'create', 'trash'])
+const ACTION_TYPES = new Set<ChatActionType>(['rename', 'organize', 'createFolder', 'create', 'trash'])
 
 function isActionType(v: unknown): v is ChatActionType {
   return typeof v === 'string' && ACTION_TYPES.has(v as ChatActionType)
@@ -39,6 +42,8 @@ function isValidAction(a: unknown): a is ChatAction {
       return typeof obj.file === 'string' && typeof obj.newName === 'string'
     case 'organize':
       return typeof obj.file === 'string' && typeof obj.dstFolder === 'string'
+    case 'createFolder':
+      return typeof obj.folder === 'string'
     case 'create':
       return typeof obj.file === 'string' && typeof obj.content === 'string'
     case 'trash':
@@ -73,6 +78,7 @@ export interface ValidateCtx {
   currentDir: string
   existingNames: string[]
   guardOn: boolean
+  entries?: Pick<FileEntry, 'name' | 'path'>[]
 }
 
 function parentOf(path: string): string {
@@ -105,6 +111,20 @@ export function validateChatAction(a: ChatAction, ctx: ValidateCtx): ValidatedAc
       const dstBlocked = guardBlocks(dst, ctx)
       if (dstBlocked) return { ok: false, error: dstBlocked }
       return { ok: true, action: { ...a, dstFolder: chk.name! } }
+    }
+    case 'createFolder': {
+      const v = validateFolderPath(a.folder)
+      if (!v.ok) return { ok: false, error: v.reason ?? 'invalid folder' }
+      const absPath = `${ctx.currentDir.replace(/\/+$/, '')}/${a.folder.replace(/\/+$/, '')}`
+      const blocked = guardBlocks(absPath, ctx)
+      if (blocked) return { ok: false, error: blocked }
+      const firstSeg = a.folder.split('/').filter(Boolean)[0]
+      if (ctx.entries) {
+        if (ctx.entries.some((e) => e.path === absPath)) return { ok: false, error: 'target exists' }
+      } else if (firstSeg && ctx.existingNames.includes(firstSeg)) {
+        return { ok: false, error: 'target exists' }
+      }
+      return { ok: true, action: { ...a, folder: a.folder.replace(/\/+$/, '') } }
     }
     case 'create': {
       if (parentOf(a.file) !== ctx.currentDir) return { ok: false, error: 'target outside current dir' }
@@ -142,7 +162,14 @@ export const CHAT_SYSTEM_PROMPT = [
   '{"actions":[{"type":"rename","file":"/abs/path","newName":"b.txt"}]}',
   ACTIONS_CLOSE,
   '',
-  'Allowed types: rename (file,newName), organize (file,dstFolder), create (file,content), trash (file).',
+  'Allowed types: rename (file,newName), organize (file,dstFolder), createFolder (folder), create (file,content), trash (file).',
+  'Rules for actions:',
+  '- create: a SINGLE new text file whose parent folder is EXACTLY the current directory (no subpaths, no placeholders).',
+  '- createFolder: create a new empty folder; `folder` may be a nested RELATIVE path like "01_Personal/CV".',
+  '- organize: moves one file into a single one-level subfolder (dstFolder has no "/").',
+  '- Never create empty ".keep" files to fake folder creation — use createFolder instead.',
+  'For reorganizations that build a folder tree or move MANY files, do NOT emit inline actions:',
+  'explain the plan in words and tell the user to press the magic button (🪄 "Crea piano") to turn it into an executable, undoable plan.',
   'Nessuna azione viene eseguita senza conferma esplicita dell\'utente.',
   'If the user does not ask for an operation, do not emit the block.',
 ].join('\n')
