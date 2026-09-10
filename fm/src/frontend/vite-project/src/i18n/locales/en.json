@@ -244,7 +244,9 @@
     "tooBig": "Folder too large to plan",
     "undoLast": "Undo",
     "lastBatch": "Last applied plan can still be undone.",
-    "undoDone": "Plan undone"
+    "undoDone": "Plan undone",
+    "working": "Creating plan…",
+    "empty": "No executable actions in this message"
   },
   "settings": {
     "title": "Settings",

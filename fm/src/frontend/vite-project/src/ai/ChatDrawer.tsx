@@ -17,6 +17,8 @@ export interface ChatDrawerProps {
   onCreatePlan?: (text: string) => void
   /** R7: false when the active folder exceeds the hard cap (button disabled). */
   canPlan?: boolean
+  /** True while a plan is being generated from a message (wand shows a spinner). */
+  planBusy?: boolean
 }
 
 /**
@@ -26,7 +28,7 @@ export interface ChatDrawerProps {
  * streaming: `useChat.send` silently drops overlapping sends, so the UI must
  * not let the user start one (Task-4 residual finding).
  */
-export function ChatDrawer({ open, onClose, ai, onCreatePlan, canPlan = true }: ChatDrawerProps) {
+export function ChatDrawer({ open, onClose, ai, onCreatePlan, canPlan = true, planBusy = false }: ChatDrawerProps) {
   const { t } = useTranslation()
   const [input, setInput] = useState('')
   const [copied, setCopied] = useState(false)
@@ -136,7 +138,7 @@ export function ChatDrawer({ open, onClose, ai, onCreatePlan, canPlan = true }: 
           )}
           {ai.messages.map((m, i) => (
             <div key={i} className={`mb-2 ${m.role === 'user' ? 'text-right' : ''}`}>
-              <MessageBubble m={m} onCreatePlan={onCreatePlan} canPlan={canPlan} />
+              <MessageBubble m={m} onCreatePlan={onCreatePlan} canPlan={canPlan} busy={planBusy} />
               {m.actions
                 ?.map((a, j) => ({ a, j, v: ai.validateAction(i, j) }))
                 .filter((x) => !(x.v.ok === false && SILENT_ISSUES.has(x.v.error)))
@@ -205,34 +207,35 @@ function MessageBubble({
   m,
   onCreatePlan,
   canPlan = true,
+  busy = false,
 }: {
   m: ChatMessageState
   onCreatePlan?: (text: string) => void
   canPlan?: boolean
+  busy?: boolean
 }) {
   const { t } = useTranslation()
   const [copied, setCopied] = useState(false)
   const isUser = m.role === 'user'
   const wand = !isUser && !!onCreatePlan
   return (
-    <span className="group relative inline-block max-w-[85%] text-left align-top">
+    <span className="group inline-block max-w-[85%] text-left align-top">
       <span className={`block break-words rounded-2xl px-3 py-2 ${isUser ? 'bg-primary/10 whitespace-pre-wrap' : 'bg-base-200'}`}>
         {isUser ? m.content : <Markdown text={m.content} />}
         {m.streaming && <span className="ml-1 inline-block h-2 w-2 animate-pulse rounded-full bg-current" />}
       </span>
-      <span
-        className={`absolute -top-1.5 right-1 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100 ${copied ? 'opacity-100' : ''}`}
-      >
+      {/* Per-message toolbar: always visible, at the END of the answer card. */}
+      <span className="mt-0.5 flex items-center gap-0.5">
         {wand && (
           <button
             data-bar-control
             className="btn btn-ghost btn-xs !min-h-0"
-            disabled={!canPlan || !!m.streaming}
-            title={canPlan ? t('plan.createBtn') : t('plan.tooBig')}
+            disabled={!canPlan || !!m.streaming || busy}
+            title={busy ? t('plan.working') : canPlan ? t('plan.createBtn') : t('plan.tooBig')}
             aria-label={t('plan.createBtn')}
             onClick={() => onCreatePlan?.(m.content)}
           >
-            🪄
+            {busy ? <span className="loading loading-spinner loading-xs" /> : '🪄'}
           </button>
         )}
         <button

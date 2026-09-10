@@ -581,6 +581,7 @@ export default function App() {
 
   // --- AI Plan (Task 6): App owns the pipeline; ChatDrawer only forwards 🪄. ---
   const plan = usePlan()
+  const [planBusy, setPlanBusy] = useState(false)
   // Intentionally the RAW active-pane entries (not the search-filtered
   // visibleEntries the pipeline uses): the cap guards the folder size itself,
   // so being stricter than the listing sent is by design (R7).
@@ -588,6 +589,7 @@ export default function App() {
 
   const handleCreatePlan = useCallback(
     async (text: string) => {
+      setPlanBusy(true)
       try {
         const p = await createPlanFromMessage({
           text,
@@ -596,9 +598,15 @@ export default function App() {
           guardOn: cfg.guardSystemLocations,
           model: fullModelId(ai.sel),
         })
+        if (!p.ops.length) {
+          handleSetStatus(i18n.t('plan.empty'), 'info')
+          return
+        }
         plan.setPlan(p)
       } catch (e) {
         handleSetStatus(String(e), 'error')
+      } finally {
+        setPlanBusy(false)
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps -- ai.sel/setPlan churn every render; handler is cheap
@@ -1541,6 +1549,7 @@ export default function App() {
         ai={chat}
         onCreatePlan={(text) => void handleCreatePlan(text)}
         canPlan={canPlan}
+        planBusy={planBusy}
       />
       <PlanPanel ctrl={plan} onClose={plan.close} />
       {lastBatchId && (

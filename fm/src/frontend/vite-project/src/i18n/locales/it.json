@@ -244,7 +244,9 @@
     "tooBig": "Cartella troppo grande per il piano",
     "undoLast": "Annulla",
     "lastBatch": "Ultimo piano applicato: puoi ancora annullarlo.",
-    "undoDone": "Piano annullato"
+    "undoDone": "Piano annullato",
+    "working": "Preparo il piano…",
+    "empty": "Nessuna azione eseguibile in questo messaggio"
   },
   "settings": {
     "title": "Impostazioni",
