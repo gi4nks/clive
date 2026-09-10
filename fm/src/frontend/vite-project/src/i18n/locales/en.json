@@ -246,7 +246,9 @@
     "lastBatch": "Last applied plan can still be undone.",
     "undoDone": "Plan undone",
     "working": "Creating plan…",
-    "empty": "No executable actions in this message"
+    "empty": "No executable actions in this message",
+    "cancel": "Cancel",
+    "timeout": "Plan generation timed out or was cancelled"
   },
   "settings": {
     "title": "Settings",

@@ -67,4 +67,29 @@ describe('createPlanFromMessage', () => {
   it('exports the 5000-entry hard cap (R7)', () => {
     expect(PLAN_MAX_ENTRIES).toBe(5000)
   })
+
+  it('forwards the abort signal to generatePlan', async () => {
+    mocks.checkHealth.mockResolvedValue({ ok: true, providers: {} })
+    mocks.generatePlan.mockResolvedValue({ folders: [], assignments: [], renames: [], trash: [] })
+    const ctrl = new AbortController()
+    await createPlanFromMessage({
+      text: 'x',
+      entries: [entry('a.txt')],
+      currentPath: '/root',
+      guardOn: true,
+      model: 'm',
+      signal: ctrl.signal,
+    })
+    const arg = mocks.generatePlan.mock.calls.at(-1)?.[0]
+    expect(arg?.signal).toBe(ctrl.signal)
+  })
+
+  it('truncates an oversized analysis text before the second turn', async () => {
+    mocks.checkHealth.mockResolvedValue({ ok: true, providers: {} })
+    mocks.generatePlan.mockResolvedValue({ folders: [], assignments: [], renames: [], trash: [] })
+    const big = 'y'.repeat(50_000)
+    await createPlanFromMessage({ text: big, entries: [entry('a.txt')], currentPath: '/root', guardOn: true, model: 'm' })
+    const arg = mocks.generatePlan.mock.calls.at(-1)?.[0]
+    expect(arg?.text.length).toBeLessThanOrEqual(6000)
+  })
 })

@@ -582,6 +582,8 @@ export default function App() {
   // --- AI Plan (Task 6): App owns the pipeline; ChatDrawer only forwards 🪄. ---
   const plan = usePlan()
   const [planBusy, setPlanBusy] = useState(false)
+  const planAbort = useRef<AbortController | null>(null)
+  const PLAN_TIMEOUT_MS = 90_000
   // Intentionally the RAW active-pane entries (not the search-filtered
   // visibleEntries the pipeline uses): the cap guards the folder size itself,
   // so being stricter than the listing sent is by design (R7).
@@ -589,6 +591,9 @@ export default function App() {
 
   const handleCreatePlan = useCallback(
     async (text: string) => {
+      const ctrl = new AbortController()
+      planAbort.current = ctrl
+      const timer = setTimeout(() => ctrl.abort(), PLAN_TIMEOUT_MS)
       setPlanBusy(true)
       try {
         const p = await createPlanFromMessage({
@@ -597,21 +602,30 @@ export default function App() {
           currentPath,
           guardOn: cfg.guardSystemLocations,
           model: fullModelId(ai.sel),
+          signal: ctrl.signal,
         })
+        if (ctrl.signal.aborted) throw new Error('aborted')
         if (!p.ops.length) {
           handleSetStatus(i18n.t('plan.empty'), 'info')
           return
         }
         plan.setPlan(p)
       } catch (e) {
-        handleSetStatus(String(e), 'error')
+        const aborted = ctrl.signal.aborted || String(e).includes('abort')
+        handleSetStatus(aborted ? i18n.t('plan.timeout') : String(e), 'error')
       } finally {
+        clearTimeout(timer)
+        planAbort.current = null
         setPlanBusy(false)
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps -- ai.sel/setPlan churn every render; handler is cheap
     [visibleEntries, currentPath, cfg.guardSystemLocations, ai.sel, plan.setPlan, handleSetStatus],
   )
+
+  const cancelCreatePlan = useCallback(() => {
+    planAbort.current?.abort()
+  }, [])
 
   const [lastBatchId, setLastBatchId] = useState<string | null>(null)
 
@@ -1548,6 +1562,7 @@ export default function App() {
         onClose={() => setChatOpen(false)}
         ai={chat}
         onCreatePlan={(text) => void handleCreatePlan(text)}
+        onCancelPlan={cancelCreatePlan}
         canPlan={canPlan}
         planBusy={planBusy}
       />

@@ -19,6 +19,8 @@ export interface ChatDrawerProps {
   canPlan?: boolean
   /** True while a plan is being generated from a message (wand shows a spinner). */
   planBusy?: boolean
+  /** Cancel the in-flight plan generation (wand becomes ⏹ while busy). */
+  onCancelPlan?: () => void
 }
 
 /**
@@ -28,7 +30,7 @@ export interface ChatDrawerProps {
  * streaming: `useChat.send` silently drops overlapping sends, so the UI must
  * not let the user start one (Task-4 residual finding).
  */
-export function ChatDrawer({ open, onClose, ai, onCreatePlan, canPlan = true, planBusy = false }: ChatDrawerProps) {
+export function ChatDrawer({ open, onClose, ai, onCreatePlan, canPlan = true, planBusy = false, onCancelPlan }: ChatDrawerProps) {
   const { t } = useTranslation()
   const [input, setInput] = useState('')
   const [copied, setCopied] = useState(false)
@@ -138,7 +140,7 @@ export function ChatDrawer({ open, onClose, ai, onCreatePlan, canPlan = true, pl
           )}
           {ai.messages.map((m, i) => (
             <div key={i} className={`mb-2 ${m.role === 'user' ? 'text-right' : ''}`}>
-              <MessageBubble m={m} onCreatePlan={onCreatePlan} canPlan={canPlan} busy={planBusy} />
+              <MessageBubble m={m} onCreatePlan={onCreatePlan} canPlan={canPlan} busy={planBusy} onCancelPlan={onCancelPlan} />
               {m.actions
                 ?.map((a, j) => ({ a, j, v: ai.validateAction(i, j) }))
                 .filter((x) => !(x.v.ok === false && SILENT_ISSUES.has(x.v.error)))
@@ -208,11 +210,13 @@ function MessageBubble({
   onCreatePlan,
   canPlan = true,
   busy = false,
+  onCancelPlan,
 }: {
   m: ChatMessageState
   onCreatePlan?: (text: string) => void
   canPlan?: boolean
   busy?: boolean
+  onCancelPlan?: () => void
 }) {
   const { t } = useTranslation()
   const [copied, setCopied] = useState(false)
@@ -226,18 +230,28 @@ function MessageBubble({
       </span>
       {/* Per-message toolbar: always visible, at the END of the answer card. */}
       <span className="mt-0.5 flex items-center gap-0.5">
-        {wand && (
+        {wand && (busy ? (
           <button
             data-bar-control
             className="btn btn-ghost btn-xs !min-h-0"
-            disabled={!canPlan || !!m.streaming || busy}
-            title={busy ? t('plan.working') : canPlan ? t('plan.createBtn') : t('plan.tooBig')}
+            title={t('plan.cancel')}
+            aria-label={t('plan.cancel')}
+            onClick={() => onCancelPlan?.()}
+          >
+            <span className="loading loading-spinner loading-xs" />⏹
+          </button>
+        ) : (
+          <button
+            data-bar-control
+            className="btn btn-ghost btn-xs !min-h-0"
+            disabled={!canPlan || !!m.streaming}
+            title={canPlan ? t('plan.createBtn') : t('plan.tooBig')}
             aria-label={t('plan.createBtn')}
             onClick={() => onCreatePlan?.(m.content)}
           >
-            {busy ? <span className="loading loading-spinner loading-xs" /> : '🪄'}
+            🪄
           </button>
-        )}
+        ))}
         <button
           data-bar-control
           className={`btn btn-ghost btn-xs !min-h-0 ${copied ? 'text-success' : ''}`}

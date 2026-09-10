@@ -246,7 +246,9 @@
     "lastBatch": "Ultimo piano applicato: puoi ancora annullarlo.",
     "undoDone": "Piano annullato",
     "working": "Preparo il piano…",
-    "empty": "Nessuna azione eseguibile in questo messaggio"
+    "empty": "Nessuna azione eseguibile in questo messaggio",
+    "cancel": "Annulla",
+    "timeout": "Generazione del piano annullata o scaduta"
   },
   "settings": {
     "title": "Impostazioni",
