@@ -18,3 +18,8 @@
 - [ ] folder-rename in panel re-attaches descendant ops (currently fails safe at apply)
 - [ ] translate raw OS-error strings (M-1); token-cap the second model turn text (M-4)
 - [ ] recursion into subfolders; multi-root; dedup-by-hash; agent-style iterative plan (deferred in spec §2)
+
+## Wand scaling fix (2026-09-09, commit 66667f1) — big folders now work
+- Plan generation is rule-based ({folders, rules:[{match,to}], renames, trashPatterns, fallback}); client expands against the real listing (no per-file JSON, no hallucinated names).
+- Sends a compact renderPlanSignature (counts+ext histogram+sample) instead of the full listing → planner latency for ~/Downloads (399 files) went from >90s timeout to ~57s (valid plan). Rust apply/undo + PlanPanel untouched.
+- Residual: ~57s is mostly provider reasoning; follow-up = stream the plan turn / raise cap gracefully / async task notification so the wait is less opaque.
