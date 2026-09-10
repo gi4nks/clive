@@ -8,11 +8,19 @@ import type { FileEntry } from '../api.js'
 
 export type { FileEntry } from '../api.js'
 
+export interface ModelRule { match: string; to: string }
 export interface ModelPlanShape {
   folders: string[]
-  assignments: { file: string; to: string }[]
+  /** Classification rules applied to the REAL listing by the client, so the
+   *  model never has to (re)emit hundreds of exact filenames. `match` is a
+   *  case-insensitive substring, or an extension when it starts with ".". The
+   *  FIRST matching rule wins. */
+  rules: ModelRule[]
   renames: { file: string; to: string }[]
-  trash: { file: string }[]
+  /** Filename patterns (same matching as rules) to send to the Trash. */
+  trashPatterns: string[]
+  /** Folder for files no rule matches (empty = leave them untouched). */
+  fallback?: string
   notes?: string
 }
 export type PlanOp =
@@ -109,53 +117,54 @@ export function expandPlan(json: ModelPlanShape, ctx: ExpandCtx): Plan {
     ops.push({ id, kind: 'rename', path: src.path, newName: chk.name ?? r.to, included: !issue, issue })
   }
 
-  // assignment moves
-  const assigned = new Set<string>()
-  const sourcesTouched = new Set<string>()
-  for (const a of json.assignments ?? []) {
-    const src = resolve(a.file)
-    const id = nextId('move')
-    if (!src) {
-      ops.push({ id, kind: 'move', path: a.file, destDir: '', included: false, issue: 'not found' })
-      warnings.push(`assign unknown: ${a.file}`)
-      continue
-    }
-    sourcesTouched.add(src.path)
-    const destAbs = addFolderChain(a.to)
-    if (destAbs === ctx.rootPath) continue // no-op move to current dir
-    if (assigned.has(src.path)) {
-      for (const o of ops) {
-        if (o.kind === 'move' && o.path === src.path) {
-          o.included = false
-          o.issue = 'duplicate move'
-        }
-      }
-    }
-    assigned.add(src.path)
-    const g = guardBlock(src.path) || guardBlock(destAbs)
-    ops.push({ id, kind: 'move', path: src.path, destDir: destAbs, included: !g, issue: g ? 'protected' : undefined })
+  // rule-based assignment applied to the REAL listing. A rule `match` is a
+  // case-insensitive substring, or an extension when it starts with ".".
+  const entryMatches = (name: string, match: string): boolean => {
+    const m = (match ?? '').trim().toLowerCase()
+    if (!m) return false
+    return m.startsWith('.') ? name.toLowerCase().endsWith(m) : name.toLowerCase().includes(m)
   }
+  const selfContained = (srcPath: string, destAbs: string): boolean =>
+    destAbs === srcPath || destAbs.startsWith(`${srcPath}/`)
 
-  // trash ops
-  for (const t of json.trash ?? []) {
-    const src = resolve(t.file)
-    const id = nextId('trash')
-    if (!src) {
-      ops.push({ id, kind: 'trash', path: t.file, included: false, issue: 'not found' })
-      warnings.push(`trash unknown: ${t.file}`)
+  const touchedEntries = new Set<string>()
+  const ruleHits = new Map<string, number>() // rule.to -> count (for no-match warnings)
+
+  // Trash patterns first (a temp/dup file must not be "organized"), then rules,
+  // then the optional fallback. Each entry yields at most one op.
+  for (const e of ctx.entries) {
+    if (e.path === ctx.rootPath) continue
+    const trashHit = (json.trashPatterns ?? []).some((p) => entryMatches(e.name, p))
+    if (trashHit) {
+      const g = guardBlock(e.path)
+      ops.push({ id: nextId('trash'), kind: 'trash', path: e.path, included: !g, issue: g ? 'protected' : undefined })
+      touchedEntries.add(e.path)
       continue
     }
-    const g = guardBlock(src.path)
-    ops.push({ id, kind: 'trash', path: src.path, included: !g, issue: g ? 'protected' : undefined })
+    const hit = (json.rules ?? []).find((r) => entryMatches(e.name, r.match))
+    const destRel = hit ? hit.to : (json.fallback ?? '').trim()
+    if (!destRel) continue // unmatched and no fallback -> untouched
+    const destAbs = addFolderChain(destRel)
+    if (destAbs === ctx.rootPath) continue // no-op move into current dir
+    if (hit) ruleHits.set(hit.to, (ruleHits.get(hit.to) ?? 0) + 1)
+    if (e.isDir && selfContained(e.path, destAbs)) {
+      ops.push({ id: nextId('move'), kind: 'move', path: e.path, destDir: destAbs, included: false, issue: 'invalid destination' })
+      touchedEntries.add(e.path)
+      continue
+    }
+    const g = guardBlock(e.path) || guardBlock(destAbs)
+    ops.push({ id: nextId('move'), kind: 'move', path: e.path, destDir: destAbs, included: !g, issue: g ? 'protected' : undefined })
+    touchedEntries.add(e.path)
+  }
+  for (const r of json.rules ?? []) {
+    if (!ruleHits.has(r.to)) warnings.push(`rule matched nothing: ${r.match} -> ${r.to}`)
   }
 
   // prepend folder creates, ordered by depth (parent before child)
   const ordered = [...folderAdds.sort((a, b) => depth(a.path) - depth(b.path))]
   const all = [...ordered, ...ops]
 
-  const touched = new Set<string>(sourcesTouched)
-  for (const o of all) touched.add(o.path)
-  const unchanged = ctx.entries.filter((e) => !touched.has(e.path))
+  const unchanged = ctx.entries.filter((e) => !touchedEntries.has(e.path) && e.path !== ctx.rootPath)
 
   return { rootPath: ctx.rootPath, ops: all, unchanged, warnings }
 }

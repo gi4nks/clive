@@ -226,9 +226,10 @@ import type { ModelPlanShape } from './plan.js'
 /** Wire schema for the plan turn; arrays default to [] so downstream never crashes. */
 export const ModelPlanShapeSchema = z.object({
   folders: z.array(z.string()).default([]),
-  assignments: z.array(z.object({ file: z.string(), to: z.string() })).default([]),
+  rules: z.array(z.object({ match: z.string(), to: z.string() })).default([]),
   renames: z.array(z.object({ file: z.string(), to: z.string() })).default([]),
-  trash: z.array(z.object({ file: z.string() })).default([]),
+  trashPatterns: z.array(z.string()).default([]),
+  fallback: z.string().optional(),
   notes: z.string().optional(),
 })
 
@@ -242,9 +243,12 @@ export interface PlanDeps {
 
 const PLAN_SYSTEM_PROMPT =
   'You are a file-organization planner for a dual-pane file manager. ' +
-  'Return ONLY a json object with keys folders[], assignments[{file,to}], renames[{file,to}], trash[{file}]. ' +
-  '`file` must be a basename present in the listing. `to` is a relative folder path using `/`. ' +
-  'Do not invent names. Do not modify existing folders beyond creating the listed new subfolders.'
+  'Return ONLY a json object with keys: folders[] (relative paths using "/"), ' +
+  'rules[{match,to}] where `match` is a case-insensitive SUBSTRING of a filename (or an extension like ".pdf") and `to` is a relative destination folder, ' +
+  'renames[{file,to}] only for specific files you must rename (rare), ' +
+  'trashPatterns[] of filename substrings/extensions to send to the Trash, and an optional fallback (folder for unmatched files). ' +
+  'IMPORTANT: do NOT list individual files. Express the organization as AT MOST ~40 rules that the app applies to the real listing. ' +
+  'The first matching rule wins; trashPatterns take priority. Do not invent folder names that require modifying existing folders.'
 
 /**
  * Turn a chat reorganization analysis into a structured plan with ONE model
@@ -269,9 +273,10 @@ export async function generatePlan(
   })) as Partial<ModelPlanShape>
   return {
     folders: out.folders ?? [],
-    assignments: out.assignments ?? [],
+    rules: out.rules ?? [],
     renames: out.renames ?? [],
-    trash: out.trash ?? [],
+    trashPatterns: out.trashPatterns ?? [],
+    fallback: out.fallback,
     notes: out.notes,
   }
 }

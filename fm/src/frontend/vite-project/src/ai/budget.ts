@@ -135,3 +135,32 @@ export function renderDirListing(entries: FileEntry[], maxEntries = 200): string
   if (remaining > 0) lines.push(`... + ${remaining} more`)
   return lines.join('\n')
 }
+
+/**
+ * Compact folder "signature" for the PLAN turn: counts + extension histogram +
+ * folder names + a bounded sample of representative names. Unlike a full
+ * listing this stays small regardless of folder size, so the rule-writing model
+ * call is fast (a huge raw listing made the planner take 90s+ and time out).
+ */
+export function renderPlanSignature(entries: FileEntry[], sample = 60): string {
+  const dirs = entries.filter((e) => e.isDir)
+  const files = entries.filter((e) => !e.isDir)
+  const byExt = new Map<string, number>()
+  for (const f of files) {
+    const m = f.name.match(/\.[^.]+$/)
+    const ext = (m ? m[0] : '(no ext)').toLowerCase()
+    byExt.set(ext, (byExt.get(ext) ?? 0) + 1)
+  }
+  const extLine = [...byExt.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 40)
+    .map(([k, v]) => `${k}:${v}`)
+    .join(' ')
+  const sampleNames = entries.slice(0, sample).map((e) => (e.isDir ? `${e.name}/` : e.name))
+  return [
+    `${entries.length} items total (${dirs.length} folders, ${files.length} files).`,
+    `By extension: ${extLine || '(none)'}`,
+    `Folders: ${dirs.slice(0, 40).map((d) => d.name).join(', ') || '(none)'}`,
+    `Representative names (sample, not exhaustive): ${sampleNames.join(', ') || '(none)'}`,
+  ].join('\n')
+}

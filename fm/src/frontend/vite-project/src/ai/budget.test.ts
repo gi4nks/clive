@@ -61,3 +61,21 @@ describe('renderBudgeted', () => {
     expect(s).toContain('hi')
   })
 })
+
+import { renderPlanSignature, type FileEntry } from './budget.js'
+const fe = (name: string, isDir = false): FileEntry =>
+  ({ name, path: `/r/${name}`, isDir, size: 1, modified: 0, extension: null }) as FileEntry
+
+describe('renderPlanSignature', () => {
+  it('summarizes counts, extensions, folders and a name sample (compact)', () => {
+    const s = renderPlanSignature([fe('a.pdf'), fe('b.pdf'), fe('img.jpeg'), fe('sub', true)])
+    expect(s).toContain('4 items total')
+    expect(s).toContain('1 folders')
+    expect(s).toContain('.pdf:2')
+    expect(s).toContain('sub/')
+    expect(s).toContain('a.pdf')
+    // stays small even for many entries
+    const big = Array.from({ length: 500 }, (_, i) => fe(`f${i}.log`))
+    expect(renderPlanSignature(big).length).toBeLessThan(800)
+  })
+})

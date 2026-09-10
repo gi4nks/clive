@@ -32,9 +32,9 @@ describe('createPlanFromMessage', () => {
     mocks.checkHealth.mockResolvedValue(health)
     mocks.generatePlan.mockResolvedValue({
       folders: ['01_Personal'],
-      assignments: [{ file: 'cv.pdf', to: '01_Personal' }],
+      rules: [{ match: 'cv.pdf', to: '01_Personal' }],
       renames: [],
-      trash: [],
+      trashPatterns: [],
     })
     const entries = [entry('cv.pdf'), entry('notes.txt')]
     const plan = await createPlanFromMessage({

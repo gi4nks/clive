@@ -181,7 +181,7 @@ describe('generatePlan', () => {
       expect(a.prompt).toContain('cv.pdf')
       expect(a.prompt).toContain('CV')
       expect(a.system).toMatch(/json/i)
-      return { folders: ['CV'], assignments: [{ file: 'cv.pdf', to: 'CV' }], renames: [], trash: [] }
+      return { folders: ['CV'], rules: [{ match: 'cv', to: 'CV' }], renames: [], trashPatterns: [] }
     }
     const out = await generatePlan({ text: 'put cv.pdf into CV', listing: 'cv.pdf', model: 'x/y', health: { ok: true, providers: {} }, callModel: fake })
     expect(out.folders).toEqual(['CV'])
@@ -190,7 +190,7 @@ describe('generatePlan', () => {
   it('normalizes missing fields to empty arrays (no throw)', async () => {
     const fake = async () => ({})
     const out = await generatePlan({ text: 't', listing: 'l', model: 'x/y', health: { ok: true, providers: {} }, callModel: fake })
-    expect(out).toEqual({ folders: [], assignments: [], renames: [], trash: [], notes: undefined })
+    expect(out).toEqual({ folders: [], rules: [], renames: [], trashPatterns: [], fallback: undefined, notes: undefined })
   })
 
   it('throws when no provider is reachable', async () => {

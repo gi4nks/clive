@@ -5,7 +5,7 @@ const entry = (name: string, isDir = false): FileEntry =>
   ({ name, path: `/root/${name}`, isDir, size: isDir ? 0 : 5, modified: 0, extension: null }) as unknown as FileEntry
 const ctx = (entries: FileEntry[], guardOn = true): { rootPath: string; entries: FileEntry[]; guardOn: boolean } =>
   ({ rootPath: '/root', entries, guardOn })
-const empty: ModelPlanShape = { folders: [], assignments: [], renames: [], trash: [] }
+const empty: ModelPlanShape = { folders: [], rules: [], renames: [], trashPatterns: [] }
 
 describe('validateFolderPath', () => {
   it('accepts nested relative paths', () => {
@@ -21,49 +21,62 @@ describe('validateFolderPath', () => {
   })
 })
 
-describe('expandPlan', () => {
+describe('expandPlan (rule-based)', () => {
   it('expands folders into depth-ordered createFolder ops', () => {
     const p = expandPlan({ ...empty, folders: ['01_Personal/CV'] }, ctx([]))
     const folders = p.ops.filter((o) => o.kind === 'createFolder')
     expect(folders.map((f) => f.path)).toEqual(['/root/01_Personal', '/root/01_Personal/CV'])
   })
 
-  it('resolves assignment basename to absolute src and dest dir', () => {
-    const p = expandPlan({ ...empty, folders: ['CV'], assignments: [{ file: 'cv.pdf', to: 'CV' }] }, ctx([entry('cv.pdf')]))
-    const mv = p.ops.find((o) => o.kind === 'move')!
-    expect(mv.path).toBe('/root/cv.pdf')
-    expect(mv.destDir).toBe('/root/CV')
+  it('assigns entries to folders by substring rule (first match wins)', () => {
+    const p = expandPlan({ ...empty, rules: [{ match: 'cv', to: '03_Lavoro/CV' }] }, ctx([entry('cv.pdf'), entry('cover.txt')]))
+    const moves = p.ops.filter((o) => o.kind === 'move')
+    expect(moves).toHaveLength(1)
+    expect(moves[0]).toMatchObject({ path: '/root/cv.pdf', destDir: '/root/03_Lavoro/CV', included: true })
   })
 
-  it('flags unknown basename as issue and never included', () => {
-    const p = expandPlan({ ...empty, assignments: [{ file: 'ghost.pdf', to: '.' }] }, ctx([entry('real.pdf')]))
-    const ghost = p.ops.find((o) => o.kind === 'move')!
-    expect(ghost.included).toBe(false)
-    expect(ghost.issue).toBeTruthy()
+  it('matches by extension when the rule starts with a dot', () => {
+    const p = expandPlan({ ...empty, rules: [{ match: '.epub', to: '05_Lettura' }] }, ctx([entry('book.epub'), entry('book.pdf')]))
+    const moves = p.ops.filter((o) => o.kind === 'move')
+    expect(moves).toHaveLength(1)
+    expect(moves[0].path).toBe('/root/book.epub')
   })
 
-  it('does not move a file into its current location', () => {
-    const p = expandPlan({ ...empty, assignments: [{ file: 'x.txt', to: '' }] }, ctx([entry('x.txt')]))
+  it('trashPatterns take priority over rules', () => {
+    const p = expandPlan({ ...empty, rules: [{ match: '.dmg', to: '09_Software' }], trashPatterns: ['(1)'] }, ctx([entry('App(1).dmg')]))
+    expect(p.ops.some((o) => o.kind === 'trash')).toBe(true)
     expect(p.ops.some((o) => o.kind === 'move')).toBe(false)
   })
 
-  it('dedups same source appearing twice (last wins, prior marked)', () => {
-    const p = expandPlan({ ...empty, folders: ['A', 'B'], assignments: [{ file: 'x.txt', to: 'A' }, { file: 'x.txt', to: 'B' }] }, ctx([entry('x.txt')]))
-    const moves = p.ops.filter((o) => o.kind === 'move')
-    expect(moves.filter((m) => m.included).length).toBe(1)
+  it('moves unmatched entries to fallback when set', () => {
+    const p = expandPlan({ ...empty, rules: [{ match: 'cv', to: 'CV' }], fallback: '00_Inbox' }, ctx([entry('cv.pdf'), entry('misc.txt')]))
+    const misc = p.ops.find((o) => o.kind === 'move' && o.path === '/root/misc.txt')
+    expect(misc?.destDir).toBe('/root/00_Inbox')
   })
 
-  it('collects unassigned entries into unchanged', () => {
-    const p = expandPlan({ ...empty, assignments: [{ file: 'a.txt', to: '' }] }, ctx([entry('a.txt'), entry('b.txt')]))
+  it('leaves unmatched entries unchanged when there is no fallback', () => {
+    const p = expandPlan({ ...empty, rules: [{ match: 'a.txt', to: 'X' }] }, ctx([entry('a.txt'), entry('b.txt')]))
     expect(p.unchanged.map((u) => u.name)).toEqual(['b.txt'])
   })
 
-  it('marks protected source as issue when guard on', () => {
-    const c = ctx([entry('System')])
-    const p = expandPlan({ ...empty, trash: [{ file: 'System' }] }, { ...c, entries: [{ ...entry('System'), path: '/System', isDir: true } as FileEntry] })
+  it('warns about a rule that matched nothing', () => {
+    const p = expandPlan({ ...empty, rules: [{ match: 'zzz', to: 'X' }] }, ctx([entry('a.txt')]))
+    expect(p.warnings.some((w) => w.includes('zzz'))).toBe(true)
+  })
+
+  it('does not move a folder into its own subtree', () => {
+    const p = expandPlan({ ...empty, rules: [{ match: 'stuff', to: 'stuff/inner' }] }, ctx([entry('stuff', true)]))
+    const mv = p.ops.find((o) => o.kind === 'move')
+    expect(mv?.included).toBe(false)
+    expect(mv?.issue).toBe('invalid destination')
+  })
+
+  it('marks a protected source as issue when guard is on', () => {
+    const sys = { name: 'System', path: '/System', isDir: true, size: 0, modified: 0, extension: null } as unknown as FileEntry
+    const p = expandPlan({ ...empty, trashPatterns: ['System'] }, { rootPath: '/root', guardOn: true, entries: [sys] })
     const t = p.ops.find((o) => o.kind === 'trash')!
     expect(t.included).toBe(false)
-    expect(t.issue).toBeTruthy()
+    expect(t.issue).toBe('protected')
   })
 
   it('rejects a nested folder path with .. anywhere', () => {
