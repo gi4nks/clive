@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type MouseEvent, type PointerEvent as ReactPointerEvent } from 'react'
+import { useEffect, useRef, useState, type DragEvent, type MouseEvent, type PointerEvent as ReactPointerEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import { formatDate, formatSize, kindOf, type FileEntry } from './api'
 import { ChildCountBadge } from './ChildCountBadge'
@@ -28,6 +28,23 @@ interface FileListProps {
   onItemContextMenu: (file: FileEntry, x: number, y: number, e: MouseEvent) => void
   /** If provided, rows become draggable; returns a JSON payload for dataTransfer. */
   dragPayload?: (file: FileEntry) => string
+  /** Drop a drag onto a folder row -> move/copy those paths INTO that folder. */
+  onDropToFolder?: (dir: string, paths: string[], copy: boolean) => void
+}
+
+const normPath = (p: string): string => p.replace(/\/+$/, '') || '/'
+const parentOfPath = (p: string): string => {
+  const i = p.lastIndexOf('/')
+  return i > 0 ? p.slice(0, i) : '/'
+}
+/** Sources that cannot move into `dir`: the dir itself, its ancestors (would be
+ *  move-into-own-subtree), or files already directly inside it. */
+export function filterFolderDrop(dir: string, paths: string[]): string[] {
+  const nd = normPath(dir)
+  return paths.filter((p) => {
+    const n = normPath(p)
+    return n !== nd && !nd.startsWith(`${n}/`) && parentOfPath(n) !== nd
+  })
 }
 
 function writeDrag(e: import('react').DragEvent, file: FileEntry, dragPayload?: (f: FileEntry) => string) {
@@ -79,11 +96,48 @@ export function FileList({
   onRenameCancel,
   onItemContextMenu,
   dragPayload,
+  onDropToFolder,
 }: FileListProps) {
   const { t } = useTranslation()
   const [cfg, setCfg] = useAppConfig()
+  const [dropHover, setDropHover] = useState<string | null>(null)
   const { name: wName, size: wSize } = cfg.colWidths[paneId]
   const colTemplate = `${wName}px ${wSize}px minmax(0, 1fr)`
+
+  // Drop binder for folder rows/cells: makes a directory a drop target so a
+  // drag of the current selection can be moved/copied INTO it (Task: intra-pane
+  // drag onto a sibling folder). No-op for non-dirs or when no handler is set.
+  const folderDrop = (file: FileEntry) => {
+    if (!file.isDir || !onDropToFolder) return {}
+    return {
+      onDragOver: (e: DragEvent) => {
+        if (!e.dataTransfer?.types.includes('application/x-clive-paths')) return
+        e.preventDefault()
+        e.stopPropagation()
+        e.dataTransfer.dropEffect = e.altKey ? 'copy' : 'move'
+        if (dropHover !== file.path) setDropHover(file.path)
+      },
+      onDragLeave: () => {
+        if (dropHover === file.path) setDropHover(null)
+      },
+      onDrop: (e: DragEvent) => {
+        e.preventDefault()
+        e.stopPropagation()
+        setDropHover(null)
+        const raw = e.dataTransfer?.getData('application/x-clive-paths')
+        if (!raw) return
+        let paths: unknown
+        try {
+          paths = JSON.parse(raw)
+        } catch {
+          return
+        }
+        if (!Array.isArray(paths)) return
+        const filtered = filterFolderDrop(file.path, paths as string[])
+        if (filtered.length) onDropToFolder(file.path, filtered, !!e.altKey)
+      },
+    }
+  }
 
   const dragRef = useRef<{ col: 'name' | 'size'; lastX: number } | null>(null)
 
@@ -137,8 +191,11 @@ export function FileList({
                     e.preventDefault()
                     onItemContextMenu(file, e.clientX, e.clientY, e)
                   }}
+                  {...folderDrop(file)}
                   title={file.name}
                   className={`flex select-none flex-col items-center gap-1 rounded-lg p-2 cursor-default border ${
+                    dropHover === file.path ? 'ring-2 ring-primary' : ''
+                  } ${
                     isSelected
                       ? 'border-primary/60 bg-primary/20'
                       : 'border-transparent hover:bg-base-200:bg-base-300 focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-neutral-900:ring-offset-neutral-950'
@@ -198,7 +255,10 @@ export function FileList({
                 e.preventDefault()
                 onItemContextMenu(file, e.clientX, e.clientY, e)
               }}
+              {...folderDrop(file)}
               className={`grid items-center gap-3 px-3 py-1 cursor-default border-l-2 ${
+                dropHover === file.path ? 'bg-primary/10 ring-1 ring-inset ring-primary' : ''
+              } ${
                 isSelected
                   ? 'border-primary bg-primary/20'
                   : 'border-transparent hover:bg-base-200:bg-base-300 focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-neutral-900:ring-offset-neutral-950'

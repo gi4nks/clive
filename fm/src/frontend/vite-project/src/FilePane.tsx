@@ -206,6 +206,7 @@ export function FilePane(props: Props) {
             onRenameCancel={props.onRenameCancel}
             onItemContextMenu={(file, x, y, e) => props.onContextMenu(id, file, x, y, e)}
             dragPayload={(file) => props.dragPayload(id, file)}
+            onDropToFolder={(dir, paths, copy) => props.onDropToDir(dir, paths, copy)}
           />
         )}
       </div>
