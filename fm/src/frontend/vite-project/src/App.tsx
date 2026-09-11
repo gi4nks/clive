@@ -588,6 +588,9 @@ export default function App() {
   // visibleEntries the pipeline uses): the cap guards the folder size itself,
   // so being stricter than the listing sent is by design (R7).
   const canPlan = entries.length <= PLAN_MAX_ENTRIES
+  // Persistent, dismissible banner: an empty plan is NOT a transient toast —
+  // "nothing happened" is the most confusing failure mode of the wand.
+  const [planEmpty, setPlanEmpty] = useState(false)
 
   const handleCreatePlan = useCallback(
     async (text: string) => {
@@ -595,6 +598,7 @@ export default function App() {
       planAbort.current = ctrl
       const timer = setTimeout(() => ctrl.abort(), PLAN_TIMEOUT_MS)
       setPlanBusy(true)
+      setPlanEmpty(false)
       try {
         const p = await createPlanFromMessage({
           text,
@@ -606,6 +610,8 @@ export default function App() {
         })
         if (ctrl.signal.aborted) throw new Error('aborted')
         if (!p.ops.length) {
+          console.warn('[plan] empty plan from model; expanding produced 0 ops', p)
+          setPlanEmpty(true)
           handleSetStatus(i18n.t('plan.empty'), 'info')
           return
         }
@@ -1687,6 +1693,17 @@ export default function App() {
           type={statusMessage.type}
           timeout={statusMessage.timeout}
         />
+      )}
+
+      {planEmpty && (
+        <div className="fixed inset-x-0 top-4 z-[75] flex justify-center px-4" role="alert">
+          <div className="alert alert-info alert-soft max-w-lg justify-between gap-4 shadow-lg">
+            <span>{t('plan.empty')}</span>
+            <button className="btn btn-ghost btn-sm" onClick={() => setPlanEmpty(false)}>
+              {t('plan.close')}
+            </button>
+          </div>
+        </div>
       )}
     </div>
   )

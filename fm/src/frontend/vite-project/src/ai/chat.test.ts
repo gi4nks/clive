@@ -193,6 +193,20 @@ describe('generatePlan', () => {
     expect(out).toEqual({ folders: [], rules: [], renames: [], trashPatterns: [], fallback: undefined, notes: undefined })
   })
 
+  it('uses the stricter system prompt on retry', async () => {
+    let systems: string[] = []
+    const fake = async (a: any) => {
+      systems.push(a.system)
+      return { folders: [], rules: [], renames: [], trashPatterns: [] }
+    }
+    const base = { text: 't', listing: 'l', model: 'x/y', health: { ok: true, providers: {} } }
+    await generatePlan({ ...base, callModel: fake })
+    await generatePlan({ ...base, retry: true, callModel: fake })
+    expect(systems).toHaveLength(2)
+    expect(systems[0]).not.toBe(systems[1])
+    expect(systems[1]).toMatch(/EMPTY plan/i)
+  })
+
   it('throws when no provider is reachable', async () => {
     const fake = async () => { throw new Error('must not be called') }
     await expect(

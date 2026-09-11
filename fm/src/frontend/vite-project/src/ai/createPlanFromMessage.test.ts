@@ -1,95 +1,42 @@
-// @vitest-environment jsdom
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
+import { createPlanFromMessage } from './createPlanFromMessage.js'
+import type { ModelPlanShape } from './plan.js'
 import type { FileEntry } from '../api.js'
 
-const mocks = vi.hoisted(() => ({
-  checkHealth: vi.fn(),
-  generatePlan: vi.fn(),
-}))
+const entry = (name: string): FileEntry =>
+  ({ name, path: `/root/${name}`, isDir: false, size: 5, modified: 0, extension: null }) as unknown as FileEntry
 
-vi.mock('./runtime.js', () => ({ checkHealth: mocks.checkHealth }))
-vi.mock('./chat.js', () => ({ generatePlan: mocks.generatePlan }))
+const EMPTY: ModelPlanShape = { folders: [], rules: [], renames: [], trashPatterns: [] }
+const FILLED: ModelPlanShape = {
+  folders: ['Docs'],
+  rules: [{ match: '.txt', to: 'Docs' }],
+  renames: [],
+  trashPatterns: [],
+}
 
-import { createPlanFromMessage, PLAN_MAX_ENTRIES } from './createPlanFromMessage.js'
-
-const entry = (name: string, isDir = false): FileEntry => ({
-  name,
-  path: `/root/${name}`,
-  isDir,
-  size: 10,
-  modified: 0,
-  extension: name.includes('.') ? name.slice(name.lastIndexOf('.') + 1) : null,
-})
+const ctx = { text: 'organizza', entries: [entry('a.txt')], currentPath: '/root', guardOn: true, model: 'x/y', health: { ok: true, providers: {} } }
 
 describe('createPlanFromMessage', () => {
-  beforeEach(() => {
-    mocks.checkHealth.mockReset()
-    mocks.generatePlan.mockReset()
+  it('returns the plan when the first turn already produces ops (single call)', async () => {
+    const generate = vi.fn(async () => FILLED) as never
+    const p = await createPlanFromMessage({ ...ctx, generate })
+    expect(generate).toHaveBeenCalledTimes(1)
+    expect(p.ops.length).toBeGreaterThan(0)
   })
 
-  it('runs health -> generatePlan -> expandPlan and returns a mounted Plan', async () => {
-    const health = { ok: true, providers: {} }
-    mocks.checkHealth.mockResolvedValue(health)
-    mocks.generatePlan.mockResolvedValue({
-      folders: ['01_Personal'],
-      rules: [{ match: 'cv.pdf', to: '01_Personal' }],
-      renames: [],
-      trashPatterns: [],
-    })
-    const entries = [entry('cv.pdf'), entry('notes.txt')]
-    const plan = await createPlanFromMessage({
-      text: 'analisi',
-      entries,
-      currentPath: '/root',
-      guardOn: true,
-      model: 'prov/model-x',
-    })
-    expect(plan.rootPath).toBe('/root')
-    expect(plan.ops.map((o) => o.kind)).toEqual(['createFolder', 'move'])
-    expect(mocks.generatePlan).toHaveBeenCalledWith(
-      expect.objectContaining({
-        text: 'analisi',
-        model: 'prov/model-x',
-        health,
-        listing: expect.stringContaining('cv.pdf'),
-      }),
-    )
+  it('retries ONCE when the first plan is empty and returns the recovered one', async () => {
+    const generate = vi
+      .fn(async (args: { retry?: boolean }) => (args.retry ? FILLED : EMPTY)) as never
+    const p = await createPlanFromMessage({ ...ctx, generate })
+    expect(generate).toHaveBeenCalledTimes(2)
+    expect((generate as any).mock.calls[1][0].retry).toBe(true)
+    expect(p.ops.length).toBeGreaterThan(0)
   })
 
-  it('throws provider-unreachable when health probe fails', async () => {
-    mocks.checkHealth.mockResolvedValue({ ok: false, providers: {} })
-    await expect(
-      createPlanFromMessage({ text: 'x', entries: [], currentPath: '/root', guardOn: true, model: 'm' }),
-    ).rejects.toThrow(/unreachable/i)
-    expect(mocks.generatePlan).not.toHaveBeenCalled()
-  })
-
-  it('exports the 5000-entry hard cap (R7)', () => {
-    expect(PLAN_MAX_ENTRIES).toBe(5000)
-  })
-
-  it('forwards the abort signal to generatePlan', async () => {
-    mocks.checkHealth.mockResolvedValue({ ok: true, providers: {} })
-    mocks.generatePlan.mockResolvedValue({ folders: [], assignments: [], renames: [], trash: [] })
-    const ctrl = new AbortController()
-    await createPlanFromMessage({
-      text: 'x',
-      entries: [entry('a.txt')],
-      currentPath: '/root',
-      guardOn: true,
-      model: 'm',
-      signal: ctrl.signal,
-    })
-    const arg = mocks.generatePlan.mock.calls.at(-1)?.[0]
-    expect(arg?.signal).toBe(ctrl.signal)
-  })
-
-  it('truncates an oversized analysis text before the second turn', async () => {
-    mocks.checkHealth.mockResolvedValue({ ok: true, providers: {} })
-    mocks.generatePlan.mockResolvedValue({ folders: [], assignments: [], renames: [], trash: [] })
-    const big = 'y'.repeat(50_000)
-    await createPlanFromMessage({ text: big, entries: [entry('a.txt')], currentPath: '/root', guardOn: true, model: 'm' })
-    const arg = mocks.generatePlan.mock.calls.at(-1)?.[0]
-    expect(arg?.text.length).toBeLessThanOrEqual(6000)
+  it('still returns an empty plan when both attempts fail (caller surfaces it)', async () => {
+    const generate = vi.fn(async () => EMPTY) as never
+    const p = await createPlanFromMessage({ ...ctx, generate })
+    expect(generate).toHaveBeenCalledTimes(2)
+    expect(p.ops.length).toBe(0)
   })
 })

@@ -25,6 +25,8 @@ export async function createPlanFromMessage(args: {
   model: string
   health?: AiHealth
   signal?: AbortSignal
+  /** Injectable for tests; production uses the real generatePlan. */
+  generate?: typeof generatePlan
 }): Promise<Plan> {
   const health = args.health ?? (await checkHealth())
   if (!health.ok) throw new Error(i18n.t('ai.providerUnreachable'))
@@ -34,6 +36,16 @@ export async function createPlanFromMessage(args: {
   // entries below. This keeps the planner call small and fast.
   const listing = renderPlanSignature(args.entries)
   const text = args.text.length > PLAN_TEXT_CAP ? args.text.slice(0, PLAN_TEXT_CAP) : args.text
-  const shape = await generatePlan({ text, listing, model: args.model, health, signal: args.signal })
-  return expandPlan(shape, { rootPath: args.currentPath, entries: args.entries, guardOn: args.guardOn })
+  const generate = args.generate ?? generatePlan
+  const ctx = { rootPath: args.currentPath, entries: args.entries, guardOn: args.guardOn }
+  const base = { text, listing, model: args.model, health, signal: args.signal }
+
+  let plan = expandPlan(await generate(base), ctx)
+  // The model can return an empty plan (flaky). Retry ONCE with a stricter
+  // prompt instead of silently showing nothing; if still empty the caller
+  // surfaces it as a real message rather than a no-op.
+  if (!plan.ops.length && !args.signal?.aborted) {
+    plan = expandPlan(await generate({ ...base, retry: true }), ctx)
+  }
+  return plan
 }

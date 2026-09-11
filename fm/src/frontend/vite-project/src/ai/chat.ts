@@ -239,6 +239,8 @@ export interface PlanDeps {
   signal?: AbortSignal
   /** Injected so tests can fake the model; production passes generateStructured. */
   callModel?: typeof generateStructured
+  /** Second attempt after the first produced an empty (unusable) plan. */
+  retry?: boolean
 }
 
 const PLAN_SYSTEM_PROMPT =
@@ -248,7 +250,18 @@ const PLAN_SYSTEM_PROMPT =
   'renames[{file,to}] only for specific files you must rename (rare), ' +
   'trashPatterns[] of filename substrings/extensions to send to the Trash, and an optional fallback (folder for unmatched files). ' +
   'IMPORTANT: do NOT list individual files. Express the organization as AT MOST ~40 rules that the app applies to the real listing. ' +
-  'The first matching rule wins; trashPatterns take priority. Do not invent folder names that require modifying existing folders.'
+  'The first matching rule wins; trashPatterns take priority. Do not invent folder names that require modifying existing folders. ' +
+  'An empty plan is a failure: if any file kind would remain unmatched, emit a fallback so every file has a destination.'
+
+/** Retry prompt: the first attempt produced an empty plan, which aborts the
+ * pipeline — we force a concrete, covering plan instead of accepting silence. */
+const PLAN_SYSTEM_PROMPT_RETRY =
+  'You are a file-organization planner. Your previous answer was REJECTED because it produced an EMPTY plan. ' +
+  'Return ONLY a json object with keys: folders[] (relative paths using "/"), ' +
+  'rules[{match,to}] where `match` is a case-insensitive SUBSTRING of a filename (or an extension like ".pdf") and `to` is a relative destination folder, ' +
+  'renames[{file,to}] only for specific files you must rename (rare), ' +
+  'trashPatterns[] of filename substrings/extensions to send to the Trash, and a REQUIRED fallback (folder for files not matched by any rule). ' +
+  'The plan MUST cover every distinct file kind in the listing: emit at least one rule per kind, plus the fallback. Do not ask questions, do not leave arrays empty.'
 
 /**
  * Turn a chat reorganization analysis into a structured plan with ONE model
@@ -267,7 +280,7 @@ export async function generatePlan(
   const out = (await call({
     model: args.model,
     schema: ModelPlanShapeSchema,
-    system: PLAN_SYSTEM_PROMPT,
+    system: args.retry ? PLAN_SYSTEM_PROMPT_RETRY : PLAN_SYSTEM_PROMPT,
     prompt,
     signal: args.signal,
   })) as Partial<ModelPlanShape>
