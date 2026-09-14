@@ -33,6 +33,7 @@ import { FilePane, type PaneId } from './FilePane'
 import { PreviewPanel } from './PreviewPanel'
 import { ErrorBoundary } from './ErrorBoundary'
 import { ShortcutsModal } from './ShortcutsModal'
+import { MultiRenameModal } from './MultiRenameModal'
 import { PaneRail } from './PaneRail'
 import { ContextMenu, type MenuItem } from './ContextMenu'
 import { isProtectedPath } from './systemGuard'
@@ -242,6 +243,7 @@ export default function App() {
   const [activityOpen, setActivityOpen] = useState(false)
   const [chatOpen, setChatOpen] = useState(false)
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
+  const [multiRename, setMultiRename] = useState(false)
   const [transferReq, setTransferReq] = useState<{ mode: 'copy' | 'move'; paths: string[] } | null>(null)
   const [pasteInFlight, setPasteInFlight] = useState(false)
   const loadedRef = useRef(false)
@@ -1070,6 +1072,22 @@ export default function App() {
           { key: 'copyloc', label: i18n.t('menu.copyPath'), icon: mi('M8 4h8a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Z'), onSelect: () => navigator.clipboard?.writeText(currentPath).then(() => handleSetStatus(i18n.t('status.pathCopied'), 'success', 2500), () => handleSetStatus(i18n.t('status.copyFailed'), 'error')) },
         ]
       }
+      if (list.length > 1) {
+        return [
+          {
+            key: 'multirename',
+            label: i18n.t('menu.multiRename'),
+            icon: (
+              <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <path d="M4 7h9M4 12h16M4 17h6" />
+                <path d="M17 4l3 3-3 3" />
+              </svg>
+            ),
+            onSelect: () => setMultiRename(true),
+          },
+          ...buildContextItems(list[0], list.map((f) => f.path)),
+        ]
+      }
       return buildContextItems(list[0], list.map((f) => f.path))
     },
     [buildContextItems, handleOpenTerminalHere, handleSetStatus, currentPath, setNewFolderName, setShowNewFolder],
@@ -1547,6 +1565,15 @@ export default function App() {
         <StatusBar ctx={widgetCtx} chatOpen={chatOpen} onChat={() => setChatOpen((o) => !o)} />
       <AiOverlay ai={ai} />
       <ShortcutsModal open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
+      <MultiRenameModal
+        open={multiRename && selectedEntries.length > 1}
+        entries={selectedEntries}
+        onClose={() => setMultiRename(false)}
+        onApply={(renames) => {
+          setMultiRename(false)
+          void ai.runMultiRename(renames)
+        }}
+      />
       <ChatDrawer
         open={chatOpen}
         onClose={() => setChatOpen(false)}

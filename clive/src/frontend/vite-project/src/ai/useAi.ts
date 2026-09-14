@@ -209,6 +209,18 @@ export function useAi(deps: AiDeps) {
       setOrganize(await proposeOrganize(files, { model: full, health: h, signal }))
     })
 
+  const runMultiRename = (renames: { path: string; newName: string }[]) =>
+    run('apply', async () => {
+      if (!renames.length) return
+      const res = await applyPlan(fs, { renames })
+      if (res.applied) {
+        setJournal(res.undo)
+        depsRef.current.setStatus(i18n.t('rename.applied', { count: res.applied }), 'success')
+        depsRef.current.refresh()
+      }
+      if (res.failures.length) depsRef.current.setStatus(i18n.t('ai.errors', { count: res.failures.length }), 'error')
+    })
+
   const requestGenerate = (prompt: string) =>
     run('generate', async (signal) => {
       if (!prompt.trim()) return
@@ -315,6 +327,7 @@ export function useAi(deps: AiDeps) {
     requestSummarize,
     requestOrganize,
     requestGenerate,
+    runMultiRename,
     apply,
     cancel,
     undo,

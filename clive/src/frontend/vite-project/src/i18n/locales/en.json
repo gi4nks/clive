@@ -183,7 +183,8 @@
     "removeRecent": "Remove from recent",
     "pin": "Pin to Sidebar",
     "unpin": "Unpin from Sidebar",
-    "systemTag": "system"
+    "systemTag": "system",
+    "multiRename": "Rename with pattern…"
   },
   "status": {
     "emptyName": "Folder name is empty",
@@ -458,5 +459,21 @@
     "quickLook": "Quick Look",
     "sendToOther": "Send selection to other pane",
     "newFolder": "New folder"
+  },
+  "rename": {
+    "title": "Rename with pattern",
+    "pattern": "Pattern",
+    "find": "find",
+    "replace": "replace",
+    "regexMode": "regex",
+    "hint": "{n} {n>3} {name} {NAME} {name_lower} {Title} {ext} {date} {date:YYYYMMDD} - counter follows the visible order",
+    "current": "Current",
+    "new": "New",
+    "dup": "duplicate",
+    "invalid": "invalid",
+    "regex": "bad regex",
+    "apply": "Apply",
+    "count": "{{n}} to rename",
+    "applied": "Renamed {{count}} items"
   }
 }

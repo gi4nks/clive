@@ -183,7 +183,8 @@
     "removeRecent": "Rimuovi dai recenti",
     "pin": "Fissa nella barra",
     "unpin": "Rimuovi dalla barra",
-    "systemTag": "sistema"
+    "systemTag": "sistema",
+    "multiRename": "Rinomina con pattern…"
   },
   "status": {
     "emptyName": "Nome cartella vuoto",
@@ -458,5 +459,21 @@
     "quickLook": "Quick Look",
     "sendToOther": "Invia selezione all’altro pannello",
     "newFolder": "Nuova cartella"
+  },
+  "rename": {
+    "title": "Rinomina con pattern",
+    "pattern": "Pattern",
+    "find": "trova",
+    "replace": "sostituisci",
+    "regexMode": "regex",
+    "hint": "{n} {n>3} {name} {NAME} {name_lower} {Title} {ext} {date} {date:YYYYMMDD} - il contatore segue l’ordine visibile",
+    "current": "Attuale",
+    "new": "Nuovo",
+    "dup": "duplicato",
+    "invalid": "non valido",
+    "regex": "regex invalida",
+    "apply": "Applica",
+    "count": "{{n}} da rinominare",
+    "applied": "Rinominati {{count}} elementi"
   }
 }
