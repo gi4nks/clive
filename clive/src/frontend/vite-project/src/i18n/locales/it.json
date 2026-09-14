@@ -29,7 +29,9 @@
     "apply": "Applica",
     "close": "Chiudi",
     "refresh": "Aggiorna",
-    "key": "Chiave API"
+    "key": "Chiave API",
+    "crashed": "Questo componente si è bloccato",
+    "retry": "Riprova"
   },
   "count": {
     "elements_one": "{{count}} elemento",
@@ -433,5 +435,28 @@
     "open": "Apri",
     "tooLarge": "Troppo grande per l’anteprima in app ({{size}})",
     "unreadable": "Impossibile leggere il file"
+  },
+  "shortcuts": {
+    "title": "Scorciatoie da tastiera",
+    "gNavigation": "Navigazione",
+    "gPanes": "Pannelli",
+    "gSelection": "Selezione",
+    "gActions": "Azioni",
+    "goUp": "Vai alla cartella superiore",
+    "editPath": "Modifica percorso",
+    "toggleSidebar": "Mostra/nascondi sidebar",
+    "paneLeft": "Attiva pannello sinistro",
+    "paneRight": "Attiva pannello destro",
+    "switchPane": "Cambia pannello",
+    "focusMode": "Modalità focus (nascondi altro pannello)",
+    "swapPanes": "Scambia pannelli",
+    "moveSelection": "Sposta selezione",
+    "selectAll": "Seleziona tutto",
+    "trash": "Sposta nel Cestino",
+    "clear": "Azzera selezione / annulla",
+    "openItem": "Apri elemento",
+    "quickLook": "Quick Look",
+    "sendToOther": "Invia selezione all’altro pannello",
+    "newFolder": "Nuova cartella"
   }
 }

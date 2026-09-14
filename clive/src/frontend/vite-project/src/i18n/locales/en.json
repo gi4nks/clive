@@ -29,7 +29,9 @@
     "apply": "Apply",
     "close": "Close",
     "refresh": "Refresh",
-    "key": "API key"
+    "key": "API key",
+    "crashed": "This component crashed",
+    "retry": "Retry"
   },
   "count": {
     "elements_one": "{{count}} element",
@@ -433,5 +435,28 @@
     "open": "Open",
     "tooLarge": "Too large for in-app preview ({{size}})",
     "unreadable": "Cannot read this file"
+  },
+  "shortcuts": {
+    "title": "Keyboard shortcuts",
+    "gNavigation": "Navigation",
+    "gPanes": "Panes",
+    "gSelection": "Selection",
+    "gActions": "Actions",
+    "goUp": "Go to parent folder",
+    "editPath": "Edit path",
+    "toggleSidebar": "Toggle sidebar",
+    "paneLeft": "Activate left pane",
+    "paneRight": "Activate right pane",
+    "switchPane": "Switch pane",
+    "focusMode": "Focus mode (hide other pane)",
+    "swapPanes": "Swap panes",
+    "moveSelection": "Move selection",
+    "selectAll": "Select all",
+    "trash": "Move to Trash",
+    "clear": "Clear selection / cancel",
+    "openItem": "Open item",
+    "quickLook": "Quick Look",
+    "sendToOther": "Send selection to other pane",
+    "newFolder": "New folder"
   }
 }

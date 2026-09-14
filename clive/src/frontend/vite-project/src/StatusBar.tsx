@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { Popover } from './Popover'
 import { WIDGETS } from './statusWidgets'
 import type { Placement, Widget, WidgetCtx } from './widgetTypes'
+import { ErrorBoundary } from './ErrorBoundary'
 
 const NARROW_THRESHOLD = 880
 
@@ -34,7 +35,11 @@ export function StatusBar({ ctx, chatOpen = false, onChat }: { ctx: WidgetCtx; c
 
   const renderOne = (w: Widget) => {
     const C = w.Component
-    return <C key={w.id} ctx={ctx} />
+    return (
+      <ErrorBoundary key={w.id} name={w.id}>
+        <C ctx={ctx} />
+      </ErrorBoundary>
+    )
   }
 
   const overflowable = narrow ? right.filter((w) => w.collapsible) : []

@@ -31,6 +31,8 @@ import {
 import { type SortKey } from './FileList'
 import { FilePane, type PaneId } from './FilePane'
 import { PreviewPanel } from './PreviewPanel'
+import { ErrorBoundary } from './ErrorBoundary'
+import { ShortcutsModal } from './ShortcutsModal'
 import { PaneRail } from './PaneRail'
 import { ContextMenu, type MenuItem } from './ContextMenu'
 import { isProtectedPath } from './systemGuard'
@@ -239,6 +241,7 @@ export default function App() {
   const [debugModalOpen, setDebugModalOpen] = useState(false)
   const [activityOpen, setActivityOpen] = useState(false)
   const [chatOpen, setChatOpen] = useState(false)
+  const [shortcutsOpen, setShortcutsOpen] = useState(false)
   const [transferReq, setTransferReq] = useState<{ mode: 'copy' | 'move'; paths: string[] } | null>(null)
   const [pasteInFlight, setPasteInFlight] = useState(false)
   const loadedRef = useRef(false)
@@ -1196,6 +1199,10 @@ export default function App() {
         e.preventDefault()
         return swapPanes()
       }
+      if (meta && !e.shiftKey && (e.key === '/' || e.code === 'Slash')) {
+        e.preventDefault()
+        return setShortcutsOpen((o) => !o)
+      }
       if (meta && e.shiftKey && lower === 'p') {
         e.preventDefault()
         return setCfg({ previewPanel: !getAppConfig().previewPanel })
@@ -1447,6 +1454,7 @@ export default function App() {
       </div>
 
       <div className="flex min-h-0 flex-1 overflow-hidden">
+        <ErrorBoundary name="sidebar">
         <Sidebar
           open={sidebarOpen}
           home={home}
@@ -1467,6 +1475,8 @@ export default function App() {
         {sidebarOpen && (
           <SplitHandle className="w-2 shrink-0" label={t('resize.title')} onPointerDown={startSidebarResize} />
         )}
+        </ErrorBoundary>
+        <ErrorBoundary name="panes" >
         <div className="flex min-h-0 min-w-0 flex-1">
           {paneCollapsed.left ? (
             <PaneRail id="left" path={panes.left.path} home={home} active={active === 'left'} onExpand={activatePane} />
@@ -1531,10 +1541,12 @@ export default function App() {
           )}
           {cfg.previewPanel && <PreviewPanel selection={selectedEntries} />}
           </div>
+          </ErrorBoundary>
         </div>
 
         <StatusBar ctx={widgetCtx} chatOpen={chatOpen} onChat={() => setChatOpen((o) => !o)} />
       <AiOverlay ai={ai} />
+      <ShortcutsModal open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
       <ChatDrawer
         open={chatOpen}
         onClose={() => setChatOpen(false)}
