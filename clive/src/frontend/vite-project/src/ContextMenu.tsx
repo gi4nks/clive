@@ -61,7 +61,7 @@ export function ContextMenu({ x, y, items, onClose }: ContextMenuProps) {
     >
       <div
         ref={ref}
-        className="menu menu-sm fixed min-w-52 rounded-box border border-base-300 bg-base-100 p-1 shadow-xl"
+        className="menu menu-sm fixed min-w-52 rounded-lg border border-base-300 bg-base-100/95 p-1 text-[13px] shadow-2xl ring-1 ring-black/5 backdrop-blur-xl"
         style={{ left: pos.left, top: pos.top }}
         onMouseDown={(e) => e.stopPropagation()}
       >

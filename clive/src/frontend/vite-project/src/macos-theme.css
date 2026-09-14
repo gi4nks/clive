@@ -1,0 +1,80 @@
+/**
+ * macOS-native look (theme layer). Applied via `html.macos-native` (main.tsx).
+ * The window runs transparent with `windowEffects: sidebar` + Overlay titlebar,
+ * so chrome areas (sidebar, toolbar, pane headers, status bar) stay translucent
+ * and let the system vibrancy through, while content is opaque — like Finder.
+ * Keep overrides specificity-based (no !important).
+ */
+
+/* --- Sidebar: vibrancy + compact rows, Finder rounding --- */
+.macos-native [role='navigation'] {
+  background: transparent;
+  border-right: 1px solid color-mix(in srgb, currentColor 10%, transparent);
+}
+.macos-native [role='navigation'] .menu li > button {
+  border-radius: 6px;
+  padding-block: 2px;
+  min-height: 22px;
+}
+.macos-native [role='navigation'] .menu li > button:hover {
+  background: color-mix(in srgb, currentColor 8%, transparent);
+}
+.macos-native [role='navigation'] .menu-title {
+  opacity: 0.55;
+  letter-spacing: 0.03em;
+}
+
+/* --- Toolbar drag area: default (window) cursor, like titlebars --- */
+.macos-native [data-tauri-drag-region] {
+  cursor: default;
+}
+
+/* --- File rows: 24px, full accent selection, no side stripe --- */
+.macos-native [data-file-path] {
+  border-left-width: 0;
+  padding-block: 2px;
+  border-radius: 6px;
+  width: calc(100% - 8px);
+  margin-inline: 4px;
+}
+.macos-native [data-file-path][aria-selected='true'] {
+  background: var(--color-primary);
+  color: var(--color-primary-contrast, #fff);
+}
+.macos-native [data-file-path][aria-selected='true'] span {
+  color: inherit;
+  opacity: 1;
+}
+.macos-native [data-file-path]:hover:not([aria-selected='true']) {
+  background: color-mix(in srgb, currentColor 6%, transparent);
+}
+
+/* --- Pane headers & status bar: translucent chrome over vibrancy --- */
+.macos-native [role='region'] header {
+  background: color-mix(in srgb, var(--color-base-200) 72%, transparent);
+  backdrop-filter: blur(20px) saturate(1.6);
+}
+.macos-native [data-status-bar] {
+  background: color-mix(in srgb, var(--color-base-200) 88%, transparent);
+  backdrop-filter: blur(20px) saturate(1.6);
+}
+.macos-native [role='region'] {
+  background: var(--color-base-100);
+}
+
+/* --- Sheets: daisy modals slide from the top, squared top corners --- */
+.macos-native .modal {
+  place-items: start center;
+  padding: 0;
+}
+.macos-native .modal .modal-box {
+  margin-top: 0;
+  border-radius: 0 0 12px 12px;
+  animation: macos-sheet-in 0.16s ease-out;
+}
+@keyframes macos-sheet-in {
+  from {
+    transform: translateY(-10px);
+    opacity: 0;
+  }
+}

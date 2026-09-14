@@ -1333,7 +1333,7 @@ export default function App() {
   }, [contextMenu, targetPaths, buildContextItems, buildSidebarItems])
 
   return (
-    <div className="spike-macos flex h-full min-h-0 flex-col overflow-hidden bg-base-100 text-base-content">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-base-100 text-base-content">
       <div
         data-tauri-drag-region
         onPointerDown={(e) => {

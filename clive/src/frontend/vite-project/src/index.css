@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "./macos-theme.css";
 
 @plugin "daisyui" {
   themes: light --default, dark --prefersdark, dracula, business, night, cupcake;
@@ -15,12 +16,12 @@
 /* App-wide theming so switching data-theme recolors everything (no white flash)
    and text scales proportionally from this root size. */
 html {
-  font-size: 15px;
-  background-color: transparent; /* SPIKE(macos-native): vibrancy through */
+  font-size: 14px;
+  background-color: transparent; /* vibrancy shows through chrome areas */
   color: var(--color-base-content);
 }
 body {
-  background-color: transparent; /* SPIKE(macos-native) */
+  background-color: transparent;
   color: var(--color-base-content);
 }
 
@@ -60,36 +61,3 @@ textarea {
   min-height: 0;
 }
 
-/* ---- SPIKE(macos-native) start: Finder-like chrome — remove this block to revert ---- */
-.spike-macos [role='navigation'] {
-  background: transparent;
-  border-right-color: color-mix(in srgb, currentColor 8%, transparent);
-}
-.spike-macos [role='navigation'] .menu li > button {
-  border-radius: 6px;
-  padding-block: 2px;
-}
-.spike-macos [data-file-path] {
-  border-left-width: 0;
-  padding-block: 2px;
-  border-radius: 6px;
-  width: calc(100% - 8px);
-  margin-inline: 4px;
-}
-.spike-macos [data-file-path][aria-selected='true'] {
-  background: var(--color-primary, #0a60ef);
-  color: #fff;
-}
-.spike-macos [data-file-path][aria-selected='true'] span,
-.spike-macos [data-file-path][aria-selected='true'] .text-base-content\/60 {
-  color: #fff !important;
-  opacity: 1 !important;
-}
-.spike-macos [role='region'] header {
-  background: color-mix(in srgb, var(--color-base-200) 72%, transparent);
-  backdrop-filter: blur(20px);
-}
-.spike-macos [role='region'] {
-  background: var(--color-base-100);
-}
-/* ---- SPIKE(macos-native) end ---- */

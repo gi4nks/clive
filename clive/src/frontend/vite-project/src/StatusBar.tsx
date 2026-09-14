@@ -48,7 +48,7 @@ export function StatusBar({ ctx, chatOpen = false, onChat }: { ctx: WidgetCtx; c
   return (
     <div
       ref={barRef}
-      className="flex h-8 shrink-0 select-none items-center gap-1 border-t border-base-300 bg-base-200 px-2 text-xs text-base-content/80"
+      data-status-bar className="flex h-8 shrink-0 select-none items-center gap-1 border-t border-base-300 bg-base-200 px-2 text-xs text-base-content/80"
     >
       {/* left */}
       <div className="flex shrink-0 items-center gap-1">{left.map(renderOne)}</div>
