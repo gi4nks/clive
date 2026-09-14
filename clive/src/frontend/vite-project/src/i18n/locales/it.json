@@ -31,7 +31,8 @@
     "refresh": "Aggiorna",
     "key": "Chiave API",
     "crashed": "Questo componente si è bloccato",
-    "retry": "Riprova"
+    "retry": "Riprova",
+    "confirm": "Conferma"
   },
   "count": {
     "elements_one": "{{count}} elemento",

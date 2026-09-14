@@ -22,6 +22,7 @@ vi.mock('../ai/runtime', () => ({
 }))
 
 import { SettingsModal } from './SettingsModal'
+import { ConfirmDialog } from '../ConfirmDialog'
 import { setProviders } from '../ai/settings'
 import { setAppConfig } from './appConfig'
 
@@ -38,7 +39,12 @@ beforeEach(async () => {
 afterEach(() => cleanup())
 
 const openAiTab = () => {
-  render(<SettingsModal open onClose={vi.fn()} />)
+  render(
+    <>
+      <SettingsModal open onClose={vi.fn()} />
+      <ConfirmDialog />
+    </>,
+  )
   fireEvent.click(screen.getByText('AI'))
 }
 
@@ -58,10 +64,11 @@ describe('Settings AI master-detail', () => {
   })
 
   it('removes only via detail and applies default', async () => {
-    vi.spyOn(window, 'confirm').mockReturnValue(true)
     openAiTab()
     fireEvent.click(screen.getByText('openrouter'))
     fireEvent.click(screen.getByText('Remove provider'))
+    await waitFor(() => expect(document.querySelector('[data-confirm-dialog]')).not.toBeNull())
+    fireEvent.click([...document.querySelectorAll('[data-confirm-dialog] .modal-box button')].at(-1)!)
     await waitFor(() => expect(mocks.aiRemoveProvider).toHaveBeenCalledWith('openrouter'))
     fireEvent.click(screen.getByText('OpenCode Go'))
     fireEvent.click(screen.getByText('Use as default'))

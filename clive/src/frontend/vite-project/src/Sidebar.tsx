@@ -5,6 +5,7 @@ import type { RemoteLocation } from './settings/appConfig'
 import { connectSmb, disconnectVolume, formatSize, listDir, revealInFinder } from './api'
 import { ContextMenu, type MenuItem } from './ContextMenu'
 import { useVolumes } from './volumes'
+import { confirmAsk } from './confirm'
 
 interface Props {
   open: boolean
@@ -258,7 +259,7 @@ export function Sidebar(props: Props) {
         <li className="menu-title mt-3 px-2 text-[10px] uppercase opacity-60">{t('volumes.title')}</li>
         {vols.volumes.map((v) => {
           const eject = async () => {
-            if (!window.confirm(t('volumes.ejectConfirm', { name: v.name }))) return
+            if (!(await confirmAsk(t('volumes.ejectConfirm', { name: v.name }), { danger: true, acceptLabel: t('volumes.eject') }))) return
             try {
               await vols.eject(v.mountPoint)
             } catch (e) {

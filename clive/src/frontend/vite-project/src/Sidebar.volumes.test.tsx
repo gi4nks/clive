@@ -14,6 +14,7 @@ vi.mock('./api', async (io) => {
 })
 
 import { Sidebar } from './Sidebar'
+import { ConfirmDialog } from './ConfirmDialog'
 
 const vols = [
   { name: 'Macintosh HD', mountPoint: '/', device: '/dev/disk3s1s1', totalBytes: 240e9, usedBytes: 200e9, freeBytes: 40e9, kind: 'internal', ejectable: false },
@@ -57,10 +58,16 @@ describe('Sidebar volumes section', () => {
   })
 
   it('shows eject only for ejectable volumes and calls ejectVolume after confirm', async () => {
-    vi.spyOn(window, 'confirm').mockReturnValue(true)
-    render(<Sidebar {...base} />)
+    render(
+      <>
+        <Sidebar {...base} />
+        <ConfirmDialog />
+      </>,
+    )
     await waitFor(() => expect(screen.getAllByLabelText('Eject')).toHaveLength(2))
     fireEvent.click(screen.getAllByLabelText('Eject')[0])
+    await waitFor(() => expect(screen.getByText(/Eject “USB DISK”/)).toBeInTheDocument())
+    fireEvent.click([...document.querySelectorAll('[data-confirm-dialog] .modal-box button')].at(-1)!)
     await waitFor(() => expect(mocks.ejectVolume).toHaveBeenCalledWith('/Volumes/USB DISK'))
   })
 
@@ -85,12 +92,18 @@ describe('Sidebar volumes section', () => {
     expect(menu.textContent).toContain('Copy path')
   })
 
-  it('keeps the volume mounted when confirm is cancelled', async () => {
-    vi.spyOn(window, 'confirm').mockReturnValue(false)
-    render(<Sidebar {...base} />)
+  it('keeps the volume mounted when the dialog is cancelled', async () => {
+    render(
+      <>
+        <Sidebar {...base} />
+        <ConfirmDialog />
+      </>,
+    )
     await waitFor(() => expect(screen.getAllByLabelText('Eject')).toHaveLength(2))
     fireEvent.click(screen.getAllByLabelText('Eject')[0])
-    await new Promise((r) => setTimeout(r, 30))
+    await waitFor(() => expect(screen.getByText(/Eject “USB DISK”/)).toBeInTheDocument())
+    fireEvent.click(screen.getByText('Cancel'))
+    await new Promise((r) => setTimeout(r, 50))
     expect(mocks.ejectVolume).not.toHaveBeenCalled()
   })
 })

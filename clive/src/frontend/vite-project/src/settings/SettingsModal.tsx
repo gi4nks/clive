@@ -5,6 +5,7 @@ import { aiAddProvider, aiRemoveProvider, aiSetProvider, buildInfo, type BuildIn
 import { providerLabel, refreshProviders, useProviderRegistry, type GatewayProvider } from '../ai/settings'
 import { DEFAULT_CONFIG, exportConfig, importConfig, resetConfig, useAppConfig, type Language, type RemoteLocation } from './appConfig'
 import { clampWidth } from '../resize'
+import { confirmAsk } from '../confirm'
 import i18n from '../i18n'
 
 const THEMES = ['', 'light', 'dark', 'dracula', 'business', 'night', 'cupcake']
@@ -68,7 +69,7 @@ function AiTab({ health, models, onChanged }: { health: AiHealth | null; models:
   }
 
   const remove = async (id: string) => {
-    if (!window.confirm(t('settings.aiRemoveConfirm', { id }))) return
+    if (!(await confirmAsk(t('settings.aiRemoveConfirm', { id }), { danger: true, acceptLabel: t('settings.aiRemove') }))) return
     try {
       await aiRemoveProvider(id)
       setSel('')
@@ -307,9 +308,13 @@ export function SettingsModal({ open, onClose }: { open: boolean; onClose: () =>
                   type="checkbox"
                   className="toggle toggle-sm"
                   checked={cfg.guardSystemLocations}
-                  onChange={(e) => {
-                    if (!e.target.checked && !window.confirm(t('settings.guardSystemOffConfirm'))) return
-                    set({ guardSystemLocations: e.target.checked })
+                  onChange={async (e) => {
+                    if (!e.target.checked) {
+                      if (!(await confirmAsk(t('settings.guardSystemOffConfirm'), { danger: true }))) return
+                      set({ guardSystemLocations: false })
+                      return
+                    }
+                    set({ guardSystemLocations: true })
                   }}
                 />
               </Row>
@@ -360,7 +365,7 @@ export function SettingsModal({ open, onClose }: { open: boolean; onClose: () =>
                   {t('settings.import')}
                   <input type="file" accept="application/json" className="hidden" onChange={(e) => e.target.files?.[0] && void doImport(e.target.files[0])} />
                 </label>
-                <button className="btn btn-sm btn-error btn-outline" onClick={() => window.confirm(t('settings.resetConfirm')) && (resetConfig(), set({ ...DEFAULT_CONFIG }))}>
+                <button className="btn btn-sm btn-error btn-outline" onClick={() => { void (async () => { if (await confirmAsk(t('settings.resetConfirm'), { danger: true, acceptLabel: t('settings.reset') })) { resetConfig(); set({ ...DEFAULT_CONFIG }) } })() }}>
                   {t('settings.reset')}
                 </button>
               </div>

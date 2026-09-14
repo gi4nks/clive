@@ -31,7 +31,8 @@
     "refresh": "Refresh",
     "key": "API key",
     "crashed": "This component crashed",
-    "retry": "Retry"
+    "retry": "Retry",
+    "confirm": "Confirm"
   },
   "count": {
     "elements_one": "{{count}} element",

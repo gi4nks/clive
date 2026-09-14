@@ -33,6 +33,7 @@ import { FilePane, type PaneId } from './FilePane'
 import { PreviewPanel } from './PreviewPanel'
 import { ErrorBoundary } from './ErrorBoundary'
 import { ShortcutsModal } from './ShortcutsModal'
+import { ConfirmDialog } from './ConfirmDialog'
 import { MultiRenameModal } from './MultiRenameModal'
 import { PaneRail } from './PaneRail'
 import { ContextMenu, type MenuItem } from './ContextMenu'
@@ -1565,6 +1566,7 @@ export default function App() {
         <StatusBar ctx={widgetCtx} chatOpen={chatOpen} onChat={() => setChatOpen((o) => !o)} />
       <AiOverlay ai={ai} />
       <ShortcutsModal open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
+      <ConfirmDialog />
       <MultiRenameModal
         open={multiRename && selectedEntries.length > 1}
         entries={selectedEntries}
