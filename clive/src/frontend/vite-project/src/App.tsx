@@ -1423,7 +1423,7 @@ export default function App() {
           </span>
         ) : null}
 
-        <div className="min-w-4 flex-1" />
+        <div data-tauri-drag-region className="min-w-4 flex-1 self-stretch" />
 
         <div
           className={`flex h-7 min-w-56 max-w-md items-center truncate rounded-lg border border-base-300 bg-base-200 px-2 text-sm hover:border-base-content/30 ${
