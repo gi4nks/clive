@@ -1,6 +1,0 @@
-{
-  "identifier": "default",
-  "description": "Main window: core APIs + local settings store.",
-  "windows": ["main"],
-  "permissions": ["core:default", "store:default"]
-}

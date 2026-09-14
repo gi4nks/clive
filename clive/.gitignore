@@ -1,0 +1,9 @@
+# Rust build artifacts
+/target/
+
+# Local secrets / provider config
+.env
+.env.local
+
+# Node dependencies
+node_modules/
