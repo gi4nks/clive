@@ -64,6 +64,27 @@ describe('Sidebar volumes section', () => {
     await waitFor(() => expect(mocks.ejectVolume).toHaveBeenCalledWith('/Volumes/USB DISK'))
   })
 
+  it('right-click on a volume opens a context menu with open/reveal/eject', async () => {
+    render(<Sidebar {...base} />)
+    await waitFor(() => expect(screen.getByText('USB DISK')).toBeInTheDocument())
+    fireEvent.contextMenu(screen.getByText('USB DISK').closest('button')!)
+    expect(screen.getByText('Open')).toBeInTheDocument()
+    expect(screen.getByText('Reveal in Finder')).toBeInTheDocument()
+    expect(screen.getByText('Eject')).toBeInTheDocument()
+    expect(screen.queryByText('Copy path')).toBeInTheDocument()
+  })
+
+  it('right-click on a remote shows open/disconnect/remove', async () => {
+    const p2 = { ...base, remoteLocations: [{ id: 'r1', name: 'NAS', path: '/Volumes/nas', kind: 'smb', endpoint: 'smb://nas/share' }] }
+    render(<Sidebar {...p2} />)
+    await waitFor(() => expect(screen.getByText('NAS')).toBeInTheDocument())
+    fireEvent.contextMenu(screen.getByText('NAS').closest('button')!)
+    const menu = document.querySelector('.menu.fixed') ?? document.body
+    expect(menu.textContent).toContain('Open')
+    expect(menu.textContent).toContain('Remove')
+    expect(menu.textContent).toContain('Copy path')
+  })
+
   it('keeps the volume mounted when confirm is cancelled', async () => {
     vi.spyOn(window, 'confirm').mockReturnValue(false)
     render(<Sidebar {...base} />)

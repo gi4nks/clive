@@ -2,7 +2,8 @@ import { useEffect, useState, type DragEvent, type MouseEvent as ReactMouseEvent
 import { useTranslation } from 'react-i18next'
 import { MAX_PINNED, pinnedLabel, placesFor } from './pinned'
 import type { RemoteLocation } from './settings/appConfig'
-import { connectSmb, disconnectVolume, formatSize, listDir } from './api'
+import { connectSmb, disconnectVolume, formatSize, listDir, revealInFinder } from './api'
+import { ContextMenu, type MenuItem } from './ContextMenu'
 import { useVolumes } from './volumes'
 
 interface Props {
@@ -40,6 +41,8 @@ export function Sidebar(props: Props) {
   const [remoteStatus, setRemoteStatus] = useState<Record<string, 'online' | 'offline' | 'connecting'>>({})
   const [remoteBusy, setRemoteBusy] = useState<string | null>(null)
   const vols = useVolumes()
+  const [menu, setMenu] = useState<{ x: number; y: number; items: MenuItem[] } | null>(null)
+  const openMenu = (e: ReactMouseEvent) => { e.preventDefault(); e.stopPropagation(); return { x: e.clientX, y: e.clientY } }
   const places = placesFor(props.home)
 
   useEffect(() => {
@@ -217,12 +220,20 @@ export function Sidebar(props: Props) {
               setRemoteBusy(null)
             }
           }
+          const remoteMenu = (): MenuItem[] => [
+            { key: 'open', label: t('menu.open'), onSelect: () => void openRemote() },
+            ...(isSmb && status === 'online' ? [{ key: 'disconnect', label: t('sidebar.disconnectRemote'), onSelect: () => void disconnectRemote() }] : []),
+            { key: 'reveal', label: t('menu.reveal'), onSelect: () => void revealInFinder(remote.path).catch(() => undefined) },
+            { key: 'copy', label: t('menu.copyPath'), onSelect: () => void navigator.clipboard?.writeText(remote.path) },
+            { key: 'remove', label: t('sidebar.removeRemote'), onSelect: () => props.onRemoveRemote(remote.id) },
+          ]
           return (
             <li key={remote.id} className="group relative">
               <button
                 data-bar-control
                 className="flex w-full min-w-0 items-center gap-2 pr-7 text-left"
                 onClick={() => void openRemote()}
+                onContextMenu={(e) => { const xy = openMenu(e); setMenu({ ...xy, items: remoteMenu() }) }}
                 disabled={remoteBusy === remote.id}
                 title={remote.path}
               >
@@ -254,6 +265,12 @@ export function Sidebar(props: Props) {
               props.onRemoteError(e instanceof Error ? e.message : String(e))
             }
           }
+          const volumeMenu = (): MenuItem[] => [
+            { key: 'open', label: t('menu.open'), onSelect: () => props.onOpenItem(v.mountPoint) },
+            { key: 'reveal', label: t('menu.reveal'), onSelect: () => void revealInFinder(v.mountPoint).catch(() => undefined) },
+            { key: 'copy', label: t('menu.copyPath'), onSelect: () => void navigator.clipboard?.writeText(v.mountPoint) },
+            ...(v.ejectable ? [{ key: 'eject', label: t('volumes.eject'), onSelect: () => void eject() }] : []),
+          ]
           return (
             <li key={v.mountPoint} className="group relative">
               <button
@@ -263,6 +280,7 @@ export function Sidebar(props: Props) {
                   if (v.mountPoint === '/' && v.kind === 'internal') props.onOpenItem('/')
                   else props.onOpenItem(v.mountPoint)
                 }}
+                onContextMenu={(e) => { const xy = openMenu(e); setMenu({ ...xy, items: volumeMenu() }) }}
                 title={`${v.mountPoint} · ${v.device}`}
               >
                 <span aria-hidden className="w-4 shrink-0 text-center">{v.kind === 'internal' ? '💽' : v.kind === 'network' ? '🌐' : '💾'}</span>
@@ -283,6 +301,7 @@ export function Sidebar(props: Props) {
           )
         })}
       </ul>
+      {menu && <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={() => setMenu(null)} />}
     </div>
   )
 }
