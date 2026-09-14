@@ -1332,8 +1332,11 @@ export default function App() {
   }, [contextMenu, targetPaths, buildContextItems, buildSidebarItems])
 
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-base-100 text-base-content">
-      <div className="flex shrink-0 select-none items-center gap-1 border-b border-base-300 px-2 py-1.5">
+    <div className="spike-macos flex h-full min-h-0 flex-col overflow-hidden bg-base-100 text-base-content">
+      <div
+        data-tauri-drag-region
+        className="flex shrink-0 select-none items-center gap-1 border-b border-base-300 py-1.5 pr-2 pl-[82px]"
+      >
         <ToolButton label={t('toolbar.back')} disabled={!backStack.length} onClick={() => goBack()}>
           <IconBack />
         </ToolButton>

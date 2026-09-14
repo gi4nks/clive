@@ -1,11 +1,14 @@
 {
   "identifier": "default",
   "description": "Main window: core APIs + local settings store.",
-  "windows": ["main"],
+  "windows": [
+    "main"
+  ],
   "permissions": [
     "core:default",
     "core:event:allow-listen",
     "core:event:allow-unlisten",
-    "store:default"
+    "store:default",
+    "core:window:allow-start-dragging"
   ]
 }
