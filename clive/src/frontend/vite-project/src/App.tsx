@@ -62,6 +62,7 @@ import { usePaneSession } from './usePaneSession'
 import { pinPath, unpinPath, reorderPinned } from './pinned'
 import { useTranslation } from 'react-i18next'
 import i18n from './i18n'
+import { getCurrentWindow } from '@tauri-apps/api/window'
 
 function Modal({
   title,
@@ -1335,7 +1336,12 @@ export default function App() {
     <div className="spike-macos flex h-full min-h-0 flex-col overflow-hidden bg-base-100 text-base-content">
       <div
         data-tauri-drag-region
-        className="flex shrink-0 select-none items-center gap-1 border-b border-base-300 py-1.5 pr-2 pl-[82px]"
+        onPointerDown={(e) => {
+          if (e.button !== 0) return
+          if ((e.target as HTMLElement).closest('button, input, select, a, [role=button], .chip-draggable')) return
+          void getCurrentWindow().startDragging().catch(() => undefined)
+        }}
+        className="flex shrink-0 cursor-default select-none items-center gap-1 border-b border-base-300 py-1.5 pr-2 pl-[82px]"
       >
         <ToolButton label={t('toolbar.back')} disabled={!backStack.length} onClick={() => goBack()}>
           <IconBack />
