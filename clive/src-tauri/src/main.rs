@@ -5,6 +5,7 @@ mod commands {
     pub mod filesystem;
     pub mod plan;
     pub mod trash;
+    pub mod archives;
 }
 
 mod gateway;
@@ -65,6 +66,9 @@ fn main() {
             commands::filesystem::quick_look,
             commands::filesystem::disk_space,
             commands::filesystem::read_file_bytes,
+            commands::archives::zip_list,
+            commands::archives::zip_read,
+            commands::archives::zip_extract,
             commands::filesystem::list_volumes,
             commands::filesystem::eject_volume,
             commands::filesystem::open_terminal,
