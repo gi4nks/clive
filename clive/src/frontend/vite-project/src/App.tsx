@@ -31,6 +31,8 @@ import {
 import { type SortKey } from './FileList'
 import { FilePane, type PaneId } from './FilePane'
 import { PreviewPanel } from './PreviewPanel'
+import { isArchivePath, splitArchivePath, joinArchivePath, listArchiveEntries, archiveBasename } from './archivePath'
+import { zipList, zipExtract } from './api'
 import { ErrorBoundary } from './ErrorBoundary'
 import { ShortcutsModal } from './ShortcutsModal'
 import { ConfirmDialog } from './ConfirmDialog'
@@ -246,6 +248,8 @@ export default function App() {
   const [chatOpen, setChatOpen] = useState(false)
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
   const [multiRename, setMultiRename] = useState(false)
+  const [extractTo, setExtractTo] = useState<{ archive: string; members: string[] | null } | null>(null)
+  const [extractDest, setExtractDest] = useState('')
   const [transferReq, setTransferReq] = useState<{ mode: 'copy' | 'move'; paths: string[] } | null>(null)
   const [pasteInFlight, setPasteInFlight] = useState(false)
   const loadedRef = useRef(false)
@@ -262,6 +266,7 @@ export default function App() {
   const dragPayload = useCallback(
     (id: PaneId, file: FileEntry) => {
       const p = panesRef.current[id]
+      if (isArchivePath(p.path)) return ''
       const sel = p.selected.has(file.path) ? [...p.selected] : [file.path]
       return JSON.stringify(sel)
     },
@@ -396,15 +401,64 @@ export default function App() {
       invalidateChildCount()
       patch(id, (p) => ({ ...p, loading: true }))
       try {
-        const items = await listDir(path, hiddenVisible)
+        const parts = splitArchivePath(path)
+        let items
+        if (parts) {
+          const listing = await zipList(parts.archive)
+          items = listArchiveEntries(parts.archive, parts.inner, listing.entries).rows
+          if (listing.truncated) handleSetStatus(i18n.t('archive.truncated'), 'info')
+        } else {
+          items = await listDir(path, hiddenVisible)
+        }
         patch(id, (p) => ({ ...p, entries: items, loading: false }))
       } catch (err) {
         patch(id, (p) => ({ ...p, loading: false }))
-        handleSetStatus(String(err), 'error')
+        handleSetStatus(archiveErrorText(String(err)), 'error')
       }
     },
     [hiddenVisible, handleSetStatus, patch],
   )
+
+  // Localizes stable backend error tokens from the archive commands.
+  function archiveErrorText(e: string): string {
+    if (e === 'encrypted') return i18n.t('archive.errEncrypted')
+    if (e === 'corrupt') return i18n.t('archive.errCorrupt')
+    if (e.startsWith('too-large')) return i18n.t('archive.errTooLarge')
+    if (e.startsWith('zip-slip:')) return i18n.t('archive.errSlip', { name: e.slice(9) })
+    return e
+  }
+
+  const readOnlyActive = () => isArchivePath(panesRef.current[activeRef.current].path)
+  const assertWritable = (): boolean => {
+    if (readOnlyActive()) {
+      handleSetStatus(i18n.t('archive.readOnly'), 'info')
+      return false
+    }
+    return true
+  }
+  const openNewFolderPrompt = () => {
+    if (!assertWritable()) return
+    setNewFolderName('')
+    setShowNewFolder(true)
+  }
+  const doExtract = async (archive: string, members: string[] | null, dest: string) => {
+    try {
+      const r = await zipExtract(archive, dest, members)
+      handleSetStatus(i18n.t('archive.extracted', { count: r.extracted }), 'success')
+      if (r.skipped.length) handleSetStatus(i18n.t('archive.skipped', { count: r.skipped.length }), 'error')
+      const ps = panesRef.current
+      await Promise.all([refreshPane('left', ps.left.path), refreshPane('right', ps.right.path)])
+    } catch (err) {
+      handleSetStatus(archiveErrorText(String(err)), 'error')
+    }
+  }
+  const archiveRealDir = (archive: string) => archive.slice(0, archive.lastIndexOf('/')) || '/'
+  const extractToTemp = async (archive: string, members: string[]): Promise<string[]> => {
+    const dest = `/tmp/clive-zip/${Date.now().toString(36)}${Math.floor(Math.random() * 1e6).toString(36)}`
+    const r = await zipExtract(archive, dest, members)
+    if (!r.extracted) throw new Error('corrupt')
+    return members.map((m) => `${dest}/${m.split('/').pop()}`)
+  }
   const refresh = useCallback((path: string) => refreshPane(active, path), [active, refreshPane])
 
   const navigatePane = useCallback(
@@ -526,10 +580,19 @@ export default function App() {
 
   const onOpen = useCallback(
     async (id: PaneId, file: FileEntry) => {
+      const parts = splitArchivePath(file.path)
       if (file.isDir) await navigatePane(id, file.path)
+      else if (parts) {
+        try {
+          const [real] = await extractToTemp(parts.archive, [parts.inner])
+          await openPath(real)
+        } catch (err) {
+          handleSetStatus(archiveErrorText(String(err)), 'error')
+        }
+      } else if (/\.zip$/i.test(file.name)) await navigatePane(id, joinArchivePath(file.path, ''))
       else await revealInFinder(file.path)
     },
-    [navigatePane],
+    [navigatePane, handleSetStatus],
   )
 
   const handleItemClick = useCallback(
@@ -651,6 +714,7 @@ export default function App() {
 
   const handleRename = useCallback(
     async (file: FileEntry, newName: string) => {
+      if (!assertWritable()) return
       try {
         await rename(file.path, newName)
         setRenamingPath(null)
@@ -682,6 +746,7 @@ export default function App() {
   }, [currentPath, newFolderName, refresh, handleSetStatus])
 
   const handleDelete = useCallback(async () => {
+    if (!assertWritable()) return
     setShowDeleteConfirm(false)
     try {
       for (const file of selectedEntries) await deleteToTrash(file.path)
@@ -702,6 +767,7 @@ export default function App() {
 
   const handleCopyCut = useCallback(
     async (op: 'copy' | 'move') => {
+      if (!assertWritable()) return
       const paths = selectedEntries.map((e) => e.path)
       if (!paths.length) return
       try {
@@ -718,6 +784,7 @@ export default function App() {
 
   const handlePaste = useCallback(async () => {
     if (!clip.paths.length) return
+    if (!assertWritable()) return
     setPasteInFlight(true)
     try {
       await pastePaths(currentPath)
@@ -747,6 +814,7 @@ export default function App() {
   }, [handleSetStatus])
 
   const handleOpenTerminalHere = useCallback(async () => {
+    if (!assertWritable()) return
     try {
       await openTerminal(currentPath)
     } catch (err) {
@@ -759,6 +827,10 @@ export default function App() {
   const applyTransfer = useCallback(
     async (dstDir: string, srcPaths: string[], mode: 'copy' | 'move') => {
       if (!srcPaths.length) return
+      if (isArchivePath(dstDir) || srcPaths.some(isArchivePath)) {
+        handleSetStatus(i18n.t('archive.readOnly'), 'error')
+        return
+      }
       const res = await transferBatch(srcPaths, dstDir, mode)
       if (res.applied) handleSetStatus(i18n.t(mode === 'copy' ? 'transfer.done' : 'transfer.moved', { count: res.applied }), 'success')
       if (res.failures.length) handleSetStatus(i18n.t('transfer.failed', { count: res.failures.length }), 'error')
@@ -898,12 +970,24 @@ export default function App() {
           key: 'open',
           label: multi ? i18n.t('menu.openMany', { count: paths.length }) : isArchive ? i18n.t('menu.extract') : i18n.t('menu.open'),
           icon: mi('M14 4h6v6M20 4l-9 9M10 5H5a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-5'),
-          onSelect: async () => {
-            for (const p of paths) {
-              try { await openPath(p) } catch (err) { handleSetStatus(String(err), 'error') }
-            }
+          onSelect: () => {
+            void (async () => {
+              const pane = panesRef.current[activeRef.current]
+              for (const p of paths) {
+                const e = pane.entries.find((x) => x.path === p)
+                await onOpen(activeRef.current, e ?? { name: archiveBasename(p), path: p, isDir: false, size: 0, modified: 0, extension: null })
+              }
+            })()
           },
         })
+      }
+
+      const archiveCtx = splitArchivePath(file.path)
+      const isZipFile = !file.isDir && /\.zip$/i.test(file.name)
+      if (isZipFile) {
+        items.unshift({ key: 'enter', label: i18n.t('archive.enter'), icon: mi('M9 4l7 8-7 8M4 12h11'), onSelect: () => void navigate(joinArchivePath(file.path, '')) })
+        items.push({ key: 'extractHere', label: i18n.t('archive.extractHere'), icon: mi('M12 4v11M8 11l4 4 4-4M4 19h16'), onSelect: () => void doExtract(file.path, null, file.path.slice(0, file.path.lastIndexOf('/')) || '/') })
+        items.push({ key: 'extractToZip', label: i18n.t('archive.extractTo'), icon: mi('M12 4v11M8 11l4 4 4-4M4 19h16'), onSelect: () => { setExtractDest(archiveRealDir(file.path)); setExtractTo({ archive: file.path, members: null }) } })
       }
 
       // Quick Look (solo file apribili singolarmente)
@@ -952,6 +1036,13 @@ export default function App() {
       items.push({ key: 'sep2', separator: true, label: '' })
 
       // Clipboard app
+      if (archiveCtx) {
+        items.push({ key: 'extractSel', label: i18n.t(paths.length > 1 ? 'archive.extractSelected' : 'archive.extractHere'), icon: mi('M12 4v11M8 11l4 4 4-4M4 19h16'), onSelect: () => void doExtract(archiveCtx.archive, paths.map((p) => splitArchivePath(p)!.inner), archiveRealDir(archiveCtx.archive)) })
+        items.push({ key: 'extractToIn', label: i18n.t('archive.extractTo'), icon: mi('M12 4v11M8 11l4 4 4-4M4 19h16'), onSelect: () => { setExtractDest(archiveRealDir(archiveCtx.archive)); setExtractTo({ archive: archiveCtx.archive, members: paths.map((p) => splitArchivePath(p)!.inner) }) } })
+        items.push({ key: 'sepArch', separator: true, label: '' })
+        items.push({ key: 'copyloc', label: i18n.t('menu.copyPath'), icon: mi('M8 4h8a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Z'), onSelect: () => navigator.clipboard?.writeText(paths.join('\n')).catch(() => undefined) })
+        return items
+      }
       items.push({ key: 'copy', label: i18n.t('menu.copy'), hint: '⌘C', icon: mi('M8 8h10v10H8zM6 16H4V6h10v2'), onSelect: () => handleCopyCut('copy') })
       items.push({ key: 'cut', label: i18n.t('menu.cut'), hint: '⌘X', icon: mi('M6 6l12 12M18 6L6 18'), onSelect: () => handleCopyCut('move') })
       items.push({ key: 'paste', label: i18n.t('menu.paste'), hint: '⌘V', disabled: !clip.paths.length, icon: mi('M9 4h6v3H9zM7 6h10v14H7z'), onSelect: () => handlePaste() })
@@ -965,11 +1056,13 @@ export default function App() {
 
       // Pin / Unpin nella barra laterale
       const allPinned = paths.length > 0 && paths.every((p) => pinned.includes(p))
-      items.push(
-        allPinned
-          ? { key: 'unpin', label: i18n.t('menu.unpin'), icon: mi('M12 17v5M8 4h8l-1 6 3 3v2H6v-2l3-3-1-6Z'), onSelect: () => setPinned((prev) => prev.filter((p) => !paths.includes(p))) }
-          : { key: 'pin', label: i18n.t('menu.pin'), icon: mi('M12 17v5M8 4h8l-1 6 3 3v2H6v-2l3-3-1-6Z'), onSelect: () => setPinned((prev) => paths.reduce((a, p) => pinPath(a, p), prev)) },
-      )
+      if (!paths.some(isArchivePath)) {
+        items.push(
+          allPinned
+            ? { key: 'unpin', label: i18n.t('menu.unpin'), icon: mi('M12 17v5M8 4h8l-1 6 3 3v2H6v-2l3-3-1-6Z'), onSelect: () => setPinned((prev) => prev.filter((p) => !paths.includes(p))) }
+            : { key: 'pin', label: i18n.t('menu.pin'), icon: mi('M12 17v5M8 4h8l-1 6 3 3v2H6v-2l3-3-1-6Z'), onSelect: () => setPinned((prev) => paths.reduce((a, p) => pinPath(a, p), prev)) },
+        )
+      }
 
       items.push({ key: 'sep3', separator: true, label: '' })
 
@@ -1171,7 +1264,7 @@ export default function App() {
       if (meta && lower === 'n') {
         e.preventDefault()
         setNewFolderName('')
-        return setShowNewFolder(true)
+        return openNewFolderPrompt()
       }
       if (meta && lower === 'a') {
         e.preventDefault()
@@ -1261,7 +1354,11 @@ export default function App() {
           const f = visibleEntries.find((x) => x.path === [...selected][0])
           if (f && !f.isDir) {
             try {
-              await quickLook(f.path)
+              const qlParts = splitArchivePath(f.path)
+              if (qlParts) {
+                const [real] = await extractToTemp(qlParts.archive, [qlParts.inner])
+                await quickLook(real)
+              } else await quickLook(f.path)
             } catch (err) {
               handleSetStatus(String(err), 'error')
             }
@@ -1364,7 +1461,7 @@ export default function App() {
 
         <div className="mx-1 h-6 w-px bg-base-300" />
 
-        <ToolButton label={t('toolbar.newFolder')} onClick={() => { setNewFolderName(''); setShowNewFolder(true) }}>
+        <ToolButton label={t('toolbar.newFolder')} onClick={openNewFolderPrompt}>
           <IconNewFolder />
         </ToolButton>
         <ToolButton
@@ -1492,7 +1589,7 @@ export default function App() {
           onToggle={() => setSidebarOpen(!sidebarOpen)}
           onOpenItem={(p) => void openSidebarItem(p)}
           onDropToDir={(dir, paths, copy) => void applyTransfer(dir, paths, copy ? 'copy' : 'move')}
-          onPinPaths={(paths) => setPinned((prev) => paths.reduce((acc, p) => pinPath(acc, p), prev))}
+          onPinPaths={(paths) => setPinned((prev) => paths.filter((p) => !isArchivePath(p)).reduce((acc, p) => pinPath(acc, p), prev))}
           onUnpin={(p) => setPinned((prev) => unpinPath(prev, p))}
           onReorder={(p, to) => setPinned((prev) => reorderPinned(prev, p, to))}
           onAdd={() => setSidebarAdd({ value: '' })}
@@ -1576,6 +1673,31 @@ export default function App() {
       <AiOverlay ai={ai} />
       <ShortcutsModal open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
       <ConfirmDialog />
+      {extractTo && (
+        <div className="modal modal-open z-[92]" role="dialog" aria-modal="true" aria-label={t('archive.extractTo')}>
+          <div className="modal-box w-full max-w-md rounded-2xl p-0 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-base-300 px-5 py-3">
+              <h3 className="text-sm font-semibold">{t('archive.extractTo')}</h3>
+              <button className="btn btn-ghost btn-sm btn-circle" onClick={() => setExtractTo(null)} aria-label={t('common.close')} title={t('common.close')}>✕</button>
+            </div>
+            <div className="space-y-2 px-5 py-4">
+              <div className="truncate text-xs opacity-60">{archiveBasename(extractTo.archive)}</div>
+              <input className="input input-sm input-bordered w-full font-mono" value={extractDest} onChange={(e) => setExtractDest(e.target.value)} autoFocus
+                onKeyDown={(e) => e.key === 'Enter' && extractDest.trim() && (void doExtract(extractTo.archive, extractTo.members, extractDest.trim()), setExtractTo(null))} />
+              <div className="flex flex-wrap gap-1.5">
+                {[{ p: home, l: t('places.home') }, ...pinned.slice(0, 6).map((pp) => ({ p: pp, l: pp.split('/').pop() || pp }))].map((q) => (
+                  <button key={q.p} className={`btn btn-xs ${extractDest === q.p ? 'btn-active' : 'btn-ghost'}`} onClick={() => setExtractDest(q.p)}>{q.l}</button>
+                ))}
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 border-t border-base-300 px-5 py-3">
+              <button className="btn btn-sm btn-ghost" onClick={() => setExtractTo(null)}>{t('common.cancel')}</button>
+              <button className="btn btn-sm btn-primary" disabled={!extractDest.trim()} onClick={() => { void doExtract(extractTo.archive, extractTo.members, extractDest.trim()); setExtractTo(null) }}>{t('archive.extract')}</button>
+            </div>
+          </div>
+          <div className="modal-backdrop bg-black/40" onClick={() => setExtractTo(null)} />
+        </div>
+      )}
       <MultiRenameModal
         open={multiRename && selectedEntries.length > 1}
         entries={selectedEntries}

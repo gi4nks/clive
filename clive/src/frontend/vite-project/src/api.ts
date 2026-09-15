@@ -61,6 +61,14 @@ export interface Volume {
   kind: 'internal' | 'network' | 'external'
   ejectable: boolean
 }
+export interface ZipEntryInfo { name: string; isDir: boolean; size: number; modified: number }
+export interface ZipListing { entries: ZipEntryInfo[]; truncated: boolean }
+export interface ExtractReport { extracted: number; skipped: string[] }
+export const zipList = (path: string) => invoke<ZipListing>('zip_list', { path })
+export const zipRead = (path: string, inner: string) => invoke<string>('zip_read', { path, inner })
+export const zipExtract = (path: string, dest: string, entries?: string[] | null) =>
+  invoke<ExtractReport>('zip_extract', { path, dest, entries: entries ?? null })
+
 export const listVolumes = () => invoke<Volume[]>('list_volumes')
 export const ejectVolume = (mount: string) => invoke<void>('eject_volume', { mount })
 export const openTerminal = (path: string) => invoke<void>('open_terminal', { path })

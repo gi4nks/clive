@@ -480,5 +480,21 @@
     "apply": "Applica",
     "count": "{{n}} da rinominare",
     "applied": "Rinominati {{count}} elementi"
+  },
+  "archive": {
+    "badge": "Archivio",
+    "enter": "Apri come cartella",
+    "extract": "Estrai",
+    "extractHere": "Estrai qui",
+    "extractTo": "Estrai in…",
+    "extractSelected": "Estrai selezionati…",
+    "extracted": "Estratti {count} elementi",
+    "skipped": "{count} elementi saltati (symlink/cifrati)",
+    "readOnly": "L'archivio è in sola lettura",
+    "truncated": "Elenco troncato — estrai per sfogliare tutto",
+    "errEncrypted": "Archivio protetto da password",
+    "errCorrupt": "Impossibile leggere l’archivio",
+    "errTooLarge": "File troppo grande per l’anteprima",
+    "errSlip": "Bloccato membro non sicuro: {name}"
   }
 }

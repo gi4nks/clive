@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { isArchivePath, splitArchivePath, joinArchivePath, archiveParent, archiveBasename, isInsideArchive, ARCHIVE_SEP } from './archivePath'
+import { isArchivePath, splitArchivePath, joinArchivePath, archiveParent, archiveBasename, isInsideArchive, archiveRealPath, listArchiveEntries, ARCHIVE_SEP } from './archivePath'
 
 describe('archivePath codec', () => {
   it('detects and splits', () => {
@@ -25,5 +25,34 @@ describe('archivePath codec', () => {
   it('inside-only flag: root of archive is already read-only', () => {
     expect(isInsideArchive('/d/b.zip!/')).toBe(true)
     expect(isInsideArchive('/d/b.zip')).toBe(false)
+  })
+})
+
+describe('listArchiveEntries', () => {
+  const members = [
+    { name: 'a.txt', isDir: false, size: 3, modified: 1 },
+    { name: 'docs/b.md', isDir: false, size: 5, modified: 2 },
+    { name: 'docs/x/c.md', isDir: false, size: 7, modified: 3 },
+    { name: 'imgs/', isDir: true, size: 0, modified: 4 },
+  ]
+  it('folds root listing into files + aggregated dirs', () => {
+    const { rows } = listArchiveEntries('/d/z.zip', '', members)
+    const names = rows.map((r) => r.name).sort()
+    expect(names).toEqual(['a.txt', 'docs', 'imgs'])
+    const docs = rows.find((r) => r.name === 'docs')!
+    expect(docs.isDir).toBe(true)
+    expect(docs.size).toBe(12)
+    expect(docs.path).toBe('/d/z.zip!/docs')
+    const img = rows.find((r) => r.name === 'imgs')!
+    expect(img.isDir).toBe(true)
+  })
+  it('nests and hides non-matching members', () => {
+    const { rows } = listArchiveEntries('/d/z.zip', 'docs', members)
+    expect(rows.map((r) => r.name).sort()).toEqual(['b.md', 'x'])
+    expect(rows.find((r) => r.name === 'b.md')!.extension).toBe('md')
+  })
+  it('real path of pseudo is the archive', () => {
+    expect(archiveRealPath('/d/z.zip!/a/b')).toBe('/d/z.zip')
+    expect(archiveRealPath('/d/plain.txt')).toBe('/d/plain.txt')
   })
 })

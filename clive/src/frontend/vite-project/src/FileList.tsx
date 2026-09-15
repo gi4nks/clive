@@ -4,6 +4,7 @@ import { formatDate, formatSize, kindOf, type FileEntry } from './api'
 import { ChildCountBadge } from './ChildCountBadge'
 import { FileIcon } from './FileIcon'
 import { getAppConfig, useAppConfig } from './settings/appConfig'
+import { isArchivePath } from './archivePath'
 import { clampWidth, fitColWidths, COL_MIN, COL_MAX } from './resize'
 import { SplitHandle } from './SplitHandle'
 
@@ -289,7 +290,7 @@ export function FileList({
                 )}
               </div>
               {file.isDir ? (
-                <ChildCountBadge path={file.path} />
+                isArchivePath(file.path) ? <span /> : <ChildCountBadge path={file.path} />
               ) : (
                 <span className="truncate text-right text-xs tabular-nums text-base-content/60">
                   {formatSize(file.size)}

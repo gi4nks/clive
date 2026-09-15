@@ -4,6 +4,7 @@ import type { FileEntry } from './api'
 import { pinnedLabel } from './pinned'
 import type { SortKey, SortState } from './FileList'
 import { FileList } from './FileList'
+import { splitArchivePath, joinArchivePath } from './archivePath'
 
 export type PaneId = 'left' | 'right'
 export interface PaneState {
@@ -54,7 +55,9 @@ export function FilePane(props: Props) {
   const [goOpen, setGoOpen] = useState(false)
   const { id, pane, files, active } = props
 
-  const pathParts = pane.path.split('/').filter(Boolean)
+  const arc = splitArchivePath(pane.path)
+  const pathParts = (arc ? arc.archive : pane.path).split('/').filter(Boolean)
+  const innerParts = arc ? arc.inner.split('/').filter(Boolean) : []
 
   const parentOf = (p: string) => (p !== '/' ? p.replace(/\/[^/]*$/, '') || '/' : '')
   const parseDrop = (e: DragEvent): string[] | null => {
@@ -161,21 +164,41 @@ export function FilePane(props: Props) {
         <div className="flex min-w-0 flex-1 items-center gap-0.5 overflow-hidden whitespace-nowrap">
           {pathParts.length === 0 && <span className="text-base-content/50">/</span>}
           {pathParts.map((seg, i) => {
+            const last = i === pathParts.length - 1
             const dir = '/' + pathParts.slice(0, i + 1).join('/')
+            const target = arc && last ? joinArchivePath(dir, '') : dir
             return (
               <span key={i} className="flex items-center gap-0.5">
                 {i > 0 && <span className="text-base-content/40">/</span>}
                 <button
                   data-bar-control
                   {...dropTo(dir)}
-                  className="max-w-40 truncate rounded px-1 hover:bg-base-300"
-                  onClick={() => props.onNavigate(id, dir)}
+                  className={`max-w-40 truncate rounded px-1 hover:bg-base-300 ${arc && last ? 'font-semibold' : ''}`}
+                  onClick={() => props.onNavigate(id, target)}
                 >
                   {seg}
                 </button>
               </span>
             )
           })}
+          {arc && (
+            <>
+              <span aria-hidden className="badge badge-xs badge-primary/20 text-primary">{t('archive.badge')}</span>
+              <span className="text-base-content/40">›</span>
+              {innerParts.map((seg, i) => (
+                <span key={`i${i}`} className="flex items-center gap-0.5">
+                  {i > 0 && <span className="text-base-content/40">/</span>}
+                  <button
+                    data-bar-control
+                    className="max-w-40 truncate rounded px-1 hover:bg-base-300"
+                    onClick={() => props.onNavigate(id, joinArchivePath(arc.archive, innerParts.slice(0, i + 1).join('/')))}
+                  >
+                    {seg}
+                  </button>
+                </span>
+              ))}
+            </>
+          )}
         </div>
         {props.onCollapse && (
           <button

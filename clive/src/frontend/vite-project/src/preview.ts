@@ -5,7 +5,8 @@
  * exported for tests.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { formatSize, readFileBytes, readTextFile } from './api'
+import { formatSize, readFileBytes, readTextFile, zipRead } from './api'
+import { splitArchivePath } from './archivePath'
 
 export type PreviewKind = 'image' | 'video' | 'audio' | 'pdf' | 'markdown' | 'text' | 'folder' | 'fallback'
 
@@ -111,7 +112,11 @@ export function usePreview(target: PreviewTarget | null): PreviewState {
       return
     }
     if (usesText(kind)) {
-      readTextFile(t.path)
+      const arcT = splitArchivePath(t.path)
+      const textP: Promise<string> = arcT
+        ? zipRead(arcT.archive, arcT.inner).then((b64) => new TextDecoder().decode(Uint8Array.from(atob(b64), (c) => c.charCodeAt(0))))
+        : readTextFile(t.path)
+      textP
         .then((raw) => {
           const { text, truncated } = truncateLines(raw)
           swap({ ...emptyState, path: t.path, name: t.name, kind, size: t.size, text, truncated, error: null })
@@ -119,7 +124,9 @@ export function usePreview(target: PreviewTarget | null): PreviewState {
         .catch(() => swap({ ...emptyState, path: t.path, name: t.name, kind: 'fallback', size: t.size, error: 'unreadable' }))
       return
     }
-    readFileBytes(t.path)
+    const arcB = splitArchivePath(t.path)
+    const bytesP = arcB ? zipRead(arcB.archive, arcB.inner) : readFileBytes(t.path)
+    bytesP
       .then((b64) => {
         const url = URL.createObjectURL(b64ToBlob(b64, MIME[kind] ?? 'application/octet-stream'))
         swap({ ...emptyState, path: t.path, name: t.name, kind, size: t.size, url, error: null })

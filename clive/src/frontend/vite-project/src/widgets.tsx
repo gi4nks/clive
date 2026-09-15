@@ -5,6 +5,7 @@ import type { MenuItem } from './ContextMenu'
 import { Popover } from './Popover'
 import type { WidgetCtx } from './widgetTypes'
 import { useVolumes } from './volumes'
+import { splitArchivePath } from './archivePath'
 
 /** basename for a path (no fs access). */
 const basenameOf = (p: string): string => p.replace(/\/+$/, '').split('/').pop() || p
@@ -240,20 +241,22 @@ export function DiskWidget({ ctx }: { ctx: WidgetCtx }) {
   const { t } = useTranslation()
   const [data, setData] = useState<DiskSpace | null>(null)
   const vols = useVolumes()
+  const realPath = splitArchivePath(ctx.currentPath)?.archive ?? ctx.currentPath
   const load = () => {
-    diskSpace(ctx.currentPath)
+    diskSpace(realPath)
       .then(setData)
       .catch(() => setData(null))
     vols.refresh()
   }
   useEffect(() => {
     let alive = true
-    diskSpace(ctx.currentPath)
+    diskSpace(realPath)
       .then((d) => alive && setData(d))
       .catch(() => alive && setData(null))
     return () => {
       alive = false
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ctx.currentPath])
 
   const pct = data && data.totalBytes ? Math.round((data.usedBytes / data.totalBytes) * 100) : null

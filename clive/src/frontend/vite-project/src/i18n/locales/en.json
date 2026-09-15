@@ -480,5 +480,21 @@
     "apply": "Apply",
     "count": "{{n}} to rename",
     "applied": "Renamed {{count}} items"
+  },
+  "archive": {
+    "badge": "Archive",
+    "enter": "Open as folder",
+    "extract": "Extract",
+    "extractHere": "Extract here",
+    "extractTo": "Extract to…",
+    "extractSelected": "Extract selected…",
+    "extracted": "Extracted {count} items",
+    "skipped": "{count} items skipped (symlink/encrypted)",
+    "readOnly": "Archive is read-only",
+    "truncated": "Listing truncated — extract to browse everything",
+    "errEncrypted": "Password-protected archive",
+    "errCorrupt": "Cannot read the archive",
+    "errTooLarge": "File too large to preview",
+    "errSlip": "Blocked unsafe member: {name}"
   }
 }
