@@ -95,20 +95,23 @@ function ToolButton({
   label,
   disabled,
   onClick,
+  active,
   children,
 }: {
   label: string
   disabled?: boolean
   onClick: () => void
+  active?: boolean
   children: ReactNode
 }) {
   return (
     <button
       title={label}
       data-tip={label}
+      aria-pressed={active === undefined ? undefined : active}
       disabled={disabled}
       onClick={onClick}
-      className="tooltip tooltip-bottom btn btn-ghost btn-sm btn-square !min-h-0 !h-8 !w-8 rounded-lg text-base-content/70"
+      className={`tooltip tooltip-bottom btn btn-ghost btn-sm btn-square !min-h-0 !h-8 !w-8 rounded-lg ${active ? 'btn-active text-base-content' : 'text-base-content/70'}`}
     >
       {children}
     </button>
@@ -1502,7 +1505,7 @@ export default function App() {
 
         <div className="mx-1 h-6 w-px bg-base-300" />
         <ViewToggle view={view} onChange={setView} />
-        <ToolButton label={t('toolbar.preview')} onClick={() => setCfg({ previewPanel: !getAppConfig().previewPanel })}>
+        <ToolButton label={t('toolbar.preview')} active={cfg.previewPanel} onClick={() => setCfg({ previewPanel: !getAppConfig().previewPanel })}>
           <svg viewBox="0 0 24 24" className="h-[18px] w-[18px]" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
             <path d="M2 12s3.5-6.5 10-6.5S22 12 22 12s-3.5 6.5-10 6.5S2 12 2 12Z" />
             <circle cx="12" cy="12" r="2.6" />
