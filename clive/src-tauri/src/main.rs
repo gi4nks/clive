@@ -16,8 +16,10 @@ use gateway::GatewayHandle;
 #[tauri::command]
 fn build_info() -> serde_json::Value {
     serde_json::json!({
-        "version": env!("CARGO_PKG_VERSION"),
+        "version": env!("CLIVE_VERSION"),
         "buildEpoch": env!("CLIVE_BUILD_EPOCH").parse::<u64>().unwrap_or(0),
+        "commit": env!("CLIVE_GIT_COMMIT"),
+        "branch": env!("CLIVE_GIT_BRANCH"),
     })
 }
 
@@ -84,4 +86,12 @@ fn main() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod version_tests {
+    #[test]
+    fn build_version_is_consistent() {
+        assert_eq!(env!("CLIVE_VERSION"), env!("CARGO_PKG_VERSION"));
+    }
 }

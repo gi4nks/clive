@@ -100,7 +100,7 @@ export const undoPlan = (batchId: string) =>
 export const onPlanProgress = (cb: (p: PlanProgress) => void) =>
   listen<PlanProgress>('plan-progress', (e) => cb(e.payload))
 
-export interface BuildInfo { version: string; buildEpoch: number }
+export interface BuildInfo { version: string; buildEpoch: number; commit: string; branch: string }
 export const buildInfo = () => invoke<BuildInfo>('build_info')
 
 export interface AiProviderInfo {

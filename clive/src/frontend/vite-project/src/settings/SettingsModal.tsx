@@ -263,6 +263,29 @@ export function SettingsModal({ open, onClose }: { open: boolean; onClose: () =>
         <div className="min-h-0 flex-1 overflow-y-auto px-5 py-2">
           {tab === 'general' && (
             <div className="divide-y divide-base-300">
+              <div className="pb-2">
+                <div className="mb-1 text-xs font-semibold uppercase tracking-wide opacity-60">{t('settings.about')}</div>
+                <Row label={t('settings.aboutVersion')}>
+                  <span className="text-xs font-mono">{build ? `v${build.version}` : '…'}</span>
+                </Row>
+                <Row label={t('settings.build')}>
+                  <span className="text-xs">{build?.buildEpoch ? new Date(build.buildEpoch * 1000).toLocaleString() : build ? '?' : '…'}</span>
+                </Row>
+                <Row label={t('settings.aboutCommit')}>
+                  <div className="flex items-center gap-1.5">
+                    <span className="font-mono text-xs">{build ? `${build.commit} · ${build.branch}` : '…'}</span>
+                    {build && (
+                      <button
+                        className="btn btn-ghost btn-xs"
+                        onClick={() => void navigator.clipboard?.writeText(`Clive v${build.version} (${build.commit}, ${build.branch})`)}
+                        aria-label={t('settings.aboutCopy')}
+                        title={t('settings.aboutCopy')}
+                        data-tip={t('settings.aboutCopy')}
+                      >⧉</button>
+                    )}
+                  </div>
+                </Row>
+              </div>
               <Row label={t('settings.language')}>
                 <select className="select select-sm select-bordered w-36" value={cfg.language} onChange={(e) => setLang(e.target.value as Language)}>
                   <option value="en">English</option>

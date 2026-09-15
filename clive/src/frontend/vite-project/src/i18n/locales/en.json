@@ -399,7 +399,11 @@
     "aiBaseUrl": "Base URL",
     "aiUseDefault": "Use as default",
     "aiDetailHint": "Select a provider from the list, or add a new one.",
-    "previewPanel": "Preview panel"
+    "previewPanel": "Preview panel",
+    "about": "About",
+    "aboutVersion": "Version",
+    "aboutCommit": "Build revision",
+    "aboutCopy": "Copy version info"
   },
   "debug": {
     "short": "Debug",
