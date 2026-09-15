@@ -60,8 +60,7 @@ function basenameOfReal(p: string): string {
   return p.replace(/\/+$/, '').split('/').pop() || p
 }
 
-/** True when browsing `path` is read-only (inside an archive). */
+/** True when browsing `path` is read-only (inside an archive; even its root listing). */
 export function isInsideArchive(path: string): boolean {
-  const parts = splitArchivePath(path)
-  return !!parts && parts.inner !== '' || (!!parts && parts.inner === '' && false)
+  return isArchivePath(path)
 }

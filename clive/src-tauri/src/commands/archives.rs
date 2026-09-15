@@ -41,7 +41,7 @@ fn open_archive(path: &str) -> Result<zip::ZipArchive<fs::File>, String> {
 
 fn modified_epoch(f: &zip::read::ZipFile) -> u64 {
     f.last_modified()
-        .and_then(|dt| dt.to_time().ok())
+        .and_then(|dt| time::OffsetDateTime::try_from(dt).ok())
         .map(|t| t.unix_timestamp().max(0) as u64)
         .unwrap_or(0)
 }

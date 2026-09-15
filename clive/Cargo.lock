@@ -409,6 +409,7 @@ dependencies = [
  "tauri",
  "tauri-build",
  "tauri-plugin-store",
+ "time",
  "tokio",
  "tower-http 0.5.2",
  "zip",

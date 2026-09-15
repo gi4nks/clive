@@ -17,6 +17,7 @@ axum = "0.7"
 tower-http = { version = "0.5", features = ["cors", "limit"] }
 reqwest = { version = "0.12", features = ["json", "stream"] }
 futures-util = "0.3"
+time = "0.3"
 zip = { version = "2", default-features = false, features = ["deflate", "time"] }
 
 [[bin]]
