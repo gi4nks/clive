@@ -2,7 +2,7 @@
 
 ## Why
 
-Clive currently hard-codes the developer's personal AI setup: three providers baked into the Rust gateway (`const PROVIDERS` in `gateway.rs`), a duplicated provider list in the frontend (`ai/settings.ts`), env vars with a private `GLB_` prefix, a personal hostname in a UI label ("Ollama (lab-server)") and personal defaults (`opencode-go` / `kimi-k3`). Anyone who does not run opencode/ollama exactly this way — i.e. every other user — cannot configure a working AI provider at all.
+Clive currently hard-codes the developer's personal AI setup: three providers baked into the Rust gateway (`const PROVIDERS` in `gateway.rs`), a duplicated provider list in the frontend (`ai/settings.ts`), env vars with a private `GLB_` prefix, a personal hostname in a UI label ("Ollama (lab server)") and personal defaults (`opencode-go` / `kimi-k3`). Anyone who does not run opencode/ollama exactly this way — i.e. every other user — cannot configure a working AI provider at all.
 
 ## What Changes
 
@@ -10,7 +10,7 @@ Clive currently hard-codes the developer's personal AI setup: three providers ba
 - **BREAKING**: `GLB_*` env vars are renamed to `CLIVE_PROVIDER_*`; no fallback is kept.
 - `cloud` flag is derived from the base URL (localhost/127.x ⇒ local, otherwise cloud) instead of a hard-coded table; the existing `ai.cloudOptIn` privacy gate keeps applying.
 - Settings → AI gains full provider management UI (list with availability, add, edit base URL/key, remove).
-- The front-end hard-coded `PROVIDERS` list and the label "Ollama (lab-server)" are removed; provider list is fetched from the gateway.
+- The front-end hard-coded `PROVIDERS` list and the label "Ollama (lab server)" are removed; provider list is fetched from the gateway.
 - Default `ai.provider` / `ai.model` become empty and auto-select the first online provider (and its first model) — no personal defaults shipped.
 - `@gi4nks/wise` is **not** changed: its factories already accept a custom `baseUrl`, and clive keeps routing everything through the gateway's single OpenAI-compatible `/v1`.
 

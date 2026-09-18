@@ -9,7 +9,7 @@
 
 ## 2. Frontend: gateway as single source of truth
 
-- [x] 2.1 Test-first (vitest): normalize `ai_get_config` + `/healthz` into `providers: ProviderMeta[]` (id, cloud, builtin, online); `isCloudProvider`/`visibleProviders` read from it. Delete hard-coded `PROVIDERS` in `src/ai/settings.ts` and the "(lab-server)" label. Verify: suite green, `rg -i lab-server src/` empty.
+- [x] 2.1 Test-first (vitest): normalize `ai_get_config` + `/healthz` into `providers: ProviderMeta[]` (id, cloud, builtin, online); `isCloudProvider`/`visibleProviders` read from it. Delete hard-coded `PROVIDERS` in `src/ai/settings.ts` and the "(lab server)" label. Verify: suite green, `rg -i lab-server src/` empty.
 - [x] 2.2 App-level auto-selection: empty/unknown/`cloud&&!optIn` stored provider ⇒ first online provider + first model from `listAvailableModels()`; persist. Update `appConfig` defaults to `provider: ''`, `model: ''` (keep `normalizeConfig` backward-compatible so existing installs keep working). Verify: tests for each fallback branch + appConfig.test updates.
 - [x] 2.3 Settings → AI: provider list with availability dots + cloud tag; add-provider form (id/baseUrl/key, inline validation errors from commands); edit built-in base/key (existing `ai_set_provider`); remove button for customs with confirm. Verify: component tests (mocked commands) + manual smoke.
 - [x] 2.4 i18n: add/remove `settings.ai.*` keys (en + it parity test must pass); remove "OpenCode Go"-centric strings if reworded. Verify: `npm run test` i18n coverage green.

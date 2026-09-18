@@ -15,7 +15,7 @@ Why a gateway (vs. `@tauri-apps/plugin-http` + injecting `fetch` into wise):
 
 ### Endpoints
 
-The gateway is a **multi-provider router**. It builds a provider registry from `GLB_*` env vars (never exposed to the webview): `opencode-go` (`GLB_OPENCODE_GO_BASE_URL` + `GLB_OPENCODE_API_KEY`), `opencode-zen` (`GLB_OPENCODE_ZEN_BASE_URL`), `ollama` (`GLB_OLLAMA_BASE_URL` → lab-server). Each base is already OpenAI-compatible (`…/v1`). Providers missing a base are skipped.
+The gateway is a **multi-provider router**. It builds a provider registry from `GLB_*` env vars (never exposed to the webview): `opencode-go` (`GLB_OPENCODE_GO_BASE_URL` + `GLB_OPENCODE_API_KEY`), `opencode-zen` (`GLB_OPENCODE_ZEN_BASE_URL`), `ollama` (`GLB_OLLAMA_BASE_URL` → lab server). Each base is already OpenAI-compatible (`…/v1`). Providers missing a base are skipped.
 
 - `GET  /healthz` → `{ ok, providers: { 'opencode-go': bool, ollama: bool, … } }` (probes each upstream `/models`)
 - `GET  /v1/models` → aggregates every provider's models, **prefixing each id with `<provider>/`** (e.g. `opencode-go/kimi-k3`, `ollama/qwen38-scene:latest`)
