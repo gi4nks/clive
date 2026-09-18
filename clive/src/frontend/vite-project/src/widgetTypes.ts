@@ -25,7 +25,6 @@ export interface WidgetCtx {
   copyCut: (op: 'copy' | 'move') => void
   paste: () => void
   clearClipboard: () => void
-  emptyTrash: () => Promise<void>
   openTerminalHere: () => void
   setStatus: (msg: string, kind: 'success' | 'error' | 'info') => void
   actionsFor: (target: FileEntry | FileEntry[]) => MenuItem[]

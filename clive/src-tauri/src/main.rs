@@ -72,7 +72,6 @@ fn main() {
             commands::filesystem::list_volumes,
             commands::filesystem::eject_volume,
             commands::filesystem::open_terminal,
-            commands::filesystem::empty_trash,
             commands::filesystem::transfer_items,
             commands::clipboard::copy_paths,
             commands::clipboard::cut_paths,

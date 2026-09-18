@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { diskSpace, openPath, formatSize, formatDate, revealInFinder, trashList, trashRestore, trashDeleteForever, trashEmpty, emptyTrash, type DiskSpace, type TrashItem } from './api'
+import { diskSpace, openPath, formatSize, formatDate, revealInFinder, trashList, trashRestore, trashDeleteForever, trashEmpty, type DiskSpace, type TrashItem } from './api'
 import type { MenuItem } from './ContextMenu'
 import { Popover } from './Popover'
 import type { WidgetCtx } from './widgetTypes'
@@ -409,7 +409,7 @@ export function TrashWidget({ ctx }: { ctx: WidgetCtx }) {
             <p className="text-sm text-base-content/70">{t('trash.confirmBody', { count })}</p>
             <div className="mt-4 flex justify-end gap-2">
               <button data-bar-control className="btn btn-ghost btn-sm" onClick={() => setConfirm(false)}>{t('common.cancel')}</button>
-              <button data-bar-control className="btn btn-error btn-sm" onClick={() => { setConfirm(false); setOpen(false); void act(async () => { await trashEmpty(); try { await emptyTrash() } catch { /* Finder may be denied/not-running; Clive-side already cleared */ } }, t('trash.emptied')) }}>
+              <button data-bar-control className="btn btn-error btn-sm" onClick={() => { setConfirm(false); setOpen(false); void act(async () => { await trashEmpty(); ctx.refresh() }, t('trash.emptied')) }}>
                 {t('trash.confirm')}
               </button>
             </div>

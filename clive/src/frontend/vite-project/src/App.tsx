@@ -14,7 +14,6 @@ import {
   createFolder,
   cutPaths,
   deleteToTrash,
-  emptyTrash,
   getClipboard,
   homeDir,
   listDir,
@@ -807,15 +806,6 @@ export default function App() {
     handleSetStatus(i18n.t('status.clipboardCleared'), 'success')
   }, [handleSetStatus])
 
-  const handleEmptyTrash = useCallback(async () => {
-    try {
-      await emptyTrash()
-      handleSetStatus(i18n.t('status.trashEmptied'), 'success')
-    } catch (err) {
-      handleSetStatus(String(err), 'error')
-    }
-  }, [handleSetStatus])
-
   const handleOpenTerminalHere = useCallback(async () => {
     if (!assertWritable()) return
     try {
@@ -1207,7 +1197,6 @@ export default function App() {
     copyCut: handleCopyCut,
     paste: handlePaste,
     clearClipboard: handleClearClip,
-    emptyTrash: handleEmptyTrash,
     openTerminalHere: handleOpenTerminalHere,
     setStatus: handleSetStatus,
     actionsFor,

@@ -644,19 +644,6 @@ pub fn open_terminal(path: String) -> Result<(), String> {
     }
 }
 
-#[tauri::command]
-pub fn empty_trash() -> Result<(), String> {
-    let status = std::process::Command::new("osascript")
-        .arg("-e")
-        .arg("tell application \"Finder\" to empty the trash")
-        .status()
-        .map_err(|e| e.to_string())?;
-    if status.success() {
-        Ok(())
-    } else {
-        Err("could not empty trash".to_string())
-    }
-}
 
 #[cfg(test)]
 mod guard_tests {

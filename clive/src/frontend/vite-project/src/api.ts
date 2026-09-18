@@ -72,7 +72,6 @@ export const zipExtract = (path: string, dest: string, entries?: string[] | null
 export const listVolumes = () => invoke<Volume[]>('list_volumes')
 export const ejectVolume = (mount: string) => invoke<void>('eject_volume', { mount })
 export const openTerminal = (path: string) => invoke<void>('open_terminal', { path })
-export const emptyTrash = () => invoke<void>('empty_trash')
 
 export interface TrashItem {
   id: string
