@@ -463,7 +463,11 @@
     "openItem": "Open item",
     "quickLook": "Quick Look",
     "sendToOther": "Send selection to other pane",
-    "newFolder": "New folder"
+    "newFolder": "New folder",
+    "extendSelection": "Extend selection",
+    "toggleAdd": "Add/remove from selection",
+    "rangeSelect": "Select range",
+    "marquee": "Drag on empty space (rubber-band)"
   },
   "rename": {
     "title": "Rename with pattern",

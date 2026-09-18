@@ -39,6 +39,7 @@ interface Props {
   dragPayload: (id: PaneId, file: FileEntry) => string
   onDropTransfer: (id: PaneId, paths: string[], copy: boolean) => void
   onDropToDir: (dir: string, paths: string[], copy: boolean) => void
+  onMarquee: (paths: string[], additive: boolean) => void
 }
 
 const PLACES: { key: string; sub?: string }[] = [
@@ -234,6 +235,7 @@ export function FilePane(props: Props) {
             onItemContextMenu={(file, x, y, e) => props.onContextMenu(id, file, x, y, e)}
             dragPayload={(file) => props.dragPayload(id, file)}
             onDropToFolder={(dir, paths, copy) => props.onDropToDir(dir, paths, copy)}
+            onMarqueeSelect={(paths, additive) => props.onMarquee(paths, additive)}
           />
         )}
       </div>

@@ -31,6 +31,7 @@ import { type SortKey } from './FileList'
 import { FilePane, type PaneId } from './FilePane'
 import { PreviewPanel } from './PreviewPanel'
 import { isArchivePath, splitArchivePath, joinArchivePath, listArchiveEntries, archiveBasename } from './archivePath'
+import { stepRange } from './selection'
 import { zipList, zipExtract } from './api'
 import { ErrorBoundary } from './ErrorBoundary'
 import { ShortcutsModal } from './ShortcutsModal'
@@ -1214,6 +1215,17 @@ export default function App() {
     el?.scrollIntoView({ block: 'nearest' })
   }, [])
 
+  const extendSelection = useCallback(
+    (delta: number | 'first' | 'last') => {
+      const id = activeRef.current
+      const p = panesRef.current[id]
+      const r = stepRange(visibleEntries.map((e) => e.path), p.anchorPath, p.selected, delta)
+      if (!r) return
+      patch(id, (pp) => ({ ...pp, selected: new Set(r.range), anchorPath: pp.anchorPath ?? r.path }))
+      scrollIntoView(r.path)
+    },
+    [visibleEntries, patch, scrollIntoView],
+  )
   const moveSelection = useCallback(
     (delta: number) => {
       if (!visibleEntries.length) return
@@ -1326,19 +1338,19 @@ export default function App() {
       }
       if (e.key === 'ArrowDown') {
         e.preventDefault()
-        return moveSelection(1)
+        return e.shiftKey ? extendSelection(1) : moveSelection(1)
       }
       if (e.key === 'ArrowUp') {
         e.preventDefault()
-        return moveSelection(-1)
+        return e.shiftKey ? extendSelection(-1) : moveSelection(-1)
       }
       if (e.key === 'Home') {
         e.preventDefault()
-        return moveSelection(-Infinity)
+        return e.shiftKey ? extendSelection('first') : moveSelection(-Infinity)
       }
       if (e.key === 'End') {
         e.preventDefault()
-        return moveSelection(Infinity)
+        return e.shiftKey ? extendSelection('last') : moveSelection(Infinity)
       }
       if (e.key === ' ' || e.code === 'Space') {
         e.preventDefault()
@@ -1621,6 +1633,7 @@ export default function App() {
             dragPayload={dragPayload}
             onDropTransfer={dropIntoPane}
             onDropToDir={dropToDir}
+              onMarquee={(paths, additive) => patch('left', (pp) => ({ ...pp, selected: additive ? new Set([...pp.selected, ...paths]) : new Set(paths), anchorPath: paths[paths.length - 1] ?? pp.anchorPath }))}
           />
           </div>
           )}
@@ -1653,6 +1666,7 @@ export default function App() {
             dragPayload={dragPayload}
             onDropTransfer={dropIntoPane}
              onDropToDir={dropToDir}
+              onMarquee={(paths, additive) => patch('right', (pp) => ({ ...pp, selected: additive ? new Set([...pp.selected, ...paths]) : new Set(paths), anchorPath: paths[paths.length - 1] ?? pp.anchorPath }))}
             />
           </div>
           )}

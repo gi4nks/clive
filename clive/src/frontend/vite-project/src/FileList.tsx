@@ -6,6 +6,7 @@ import { FileIcon } from './FileIcon'
 import { getAppConfig, useAppConfig } from './settings/appConfig'
 import { isArchivePath } from './archivePath'
 import { clampWidth, fitColWidths, COL_MIN, COL_MAX } from './resize'
+import { marqueePaths, type Rect } from './selection'
 import { SplitHandle } from './SplitHandle'
 
 export type SortKey = 'name' | 'size' | 'modified'
@@ -31,6 +32,8 @@ interface FileListProps {
   dragPayload?: (file: FileEntry) => string
   /** Drop a drag onto a folder row -> move/copy those paths INTO that folder. */
   onDropToFolder?: (dir: string, paths: string[], copy: boolean) => void
+  /** Rubber-band selection started on empty space (additive = modifier held). */
+  onMarqueeSelect?: (paths: string[], additive: boolean) => void
 }
 
 const normPath = (p: string): string => p.replace(/\/+$/, '') || '/'
@@ -98,6 +101,7 @@ export function FileList({
   onItemContextMenu,
   dragPayload,
   onDropToFolder,
+  onMarqueeSelect,
 }: FileListProps) {
   const { t } = useTranslation()
   const [cfg, setCfg] = useAppConfig()
@@ -176,10 +180,70 @@ export function FileList({
     document.body.style.userSelect = ''
   }
 
+  // Rubber-band selection: starts only on empty space of the scroll container.
+  // The live drag rect lives in a ref (pointerup reads it before React flushes state).
+  const marqueeRef = useRef<HTMLDivElement | null>(null)
+  const [marquee, setMarquee] = useState<Rect | null>(null)
+  const marqueeBox = useRef<Rect | null>(null)
+  const marqueeStart = useRef<{ x: number; y: number } | null>(null)
+
+  const onMarqueePointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
+    // jsdom may leave button undefined for pointer events; only right-click must skip.
+    if (e.button === 2 || !onMarqueeSelect) return
+    const el = e.currentTarget
+    if ((e.target as HTMLElement).closest('[data-file-path]')) return
+    const x = e.clientX - el.getBoundingClientRect().left + el.scrollLeft
+    const y = e.clientY - el.getBoundingClientRect().top + el.scrollTop
+    marqueeStart.current = { x, y }
+    marqueeBox.current = { x, y, w: 0, h: 0 }
+    setMarquee(marqueeBox.current)
+    try { (e.target as HTMLElement).setPointerCapture?.(e.pointerId) } catch {}
+  }
+  const onMarqueePointerMove = (e: ReactPointerEvent<HTMLDivElement>) => {
+    if (!marqueeStart.current) return
+    const el = e.currentTarget
+    const x = e.clientX - el.getBoundingClientRect().left + el.scrollLeft
+    const y = e.clientY - el.getBoundingClientRect().top + el.scrollTop
+    const s0 = marqueeStart.current
+    const box = { x: Math.min(s0.x, x), y: Math.min(s0.y, y), w: Math.abs(x - s0.x), h: Math.abs(y - s0.y) }
+    marqueeBox.current = box
+    setMarquee(box)
+  }
+  const onMarqueePointerUp = (e: ReactPointerEvent<HTMLDivElement>) => {
+    if (!marqueeStart.current) return
+    const el = e.currentTarget
+    const box = marqueeBox.current
+    marqueeStart.current = null
+    marqueeBox.current = null
+    setMarquee(null)
+    const cRect = el.getBoundingClientRect()
+    const items = [...el.querySelectorAll<HTMLElement>('[data-file-path]')].map((r) => {
+      const b = r.getBoundingClientRect()
+      return { path: r.getAttribute('data-file-path')!, rect: { x: b.x - cRect.left + el.scrollLeft, y: b.y - cRect.top + el.scrollTop, w: b.width, h: b.height } as Rect }
+    })
+    // A pure click without real drag must still clear (replace with empty).
+    const hits = box && (box.w > 1 || box.h > 1) ? marqueePaths(items, box) : []
+    onMarqueeSelect?.(hits, e.ctrlKey || e.metaKey)
+  }
+  const marqueeLayer = (
+    <div
+      ref={marqueeRef}
+      data-marquee={marquee ? '' : undefined}
+      className="pointer-events-none absolute z-20 rounded-sm border border-primary bg-primary/10"
+      style={marquee ? { left: marquee.x, top: marquee.y, width: marquee.w, height: marquee.h, display: marquee.w || marquee.h ? 'block' : 'none' } : { display: 'none' }}
+    />
+  )
+
   if (view === 'grid') {
     return (
       <div className="flex h-full min-h-0 flex-col">
-        <div className="scroll-area flex-1 p-4">
+        <div
+          className="scroll-area relative flex-1 p-4"
+          onPointerDown={onMarqueePointerDown}
+          onPointerMove={onMarqueePointerMove}
+          onPointerUp={onMarqueePointerUp}
+        >
+        {marqueeLayer}
           {files.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center gap-4 text-sm text-base-content/60">
             <span className="text-5xl">📭</span>
@@ -244,7 +308,13 @@ export function FileList({
         </div>
         <SortHeader label={t('fileList.date')} column="modified" sort={sort} onSortChange={onSortChange} align="right" />
       </div>
-      <div className="scroll-area flex-1 py-1">
+      <div
+        className="scroll-area relative flex-1 py-1"
+        onPointerDown={onMarqueePointerDown}
+        onPointerMove={onMarqueePointerMove}
+        onPointerUp={onMarqueePointerUp}
+      >
+        {marqueeLayer}
         {files.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center gap-4 text-sm text-base-content/60">
             <span className="text-5xl">📭</span>

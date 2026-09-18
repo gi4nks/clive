@@ -463,7 +463,11 @@
     "openItem": "Apri elemento",
     "quickLook": "Quick Look",
     "sendToOther": "Invia selezione all’altro pannello",
-    "newFolder": "Nuova cartella"
+    "newFolder": "Nuova cartella",
+    "extendSelection": "Estendi selezione",
+    "toggleAdd": "Aggiungi/rimuovi dalla selezione",
+    "rangeSelect": "Seleziona intervallo",
+    "marquee": "Trascina sullo spazio vuoto (selezione a rettangolo)"
   },
   "rename": {
     "title": "Rinomina con pattern",

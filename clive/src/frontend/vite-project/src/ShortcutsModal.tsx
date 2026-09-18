@@ -39,6 +39,10 @@ const GROUPS: { titleKey: string; rows: Row[] }[] = [
     rows: [
       { keys: ['↑', '↓'], labelKey: 'shortcuts.moveSelection' },
       { keys: ['⌘', 'A'], labelKey: 'shortcuts.selectAll' },
+      { keys: ['⇧', '↑/↓'], labelKey: 'shortcuts.extendSelection' },
+      { keys: ['⌘/Ctrl', 'Clic'], labelKey: 'shortcuts.toggleAdd' },
+      { keys: ['⇧', 'Clic'], labelKey: 'shortcuts.rangeSelect' },
+      { keys: ['drag'], labelKey: 'shortcuts.marquee' },
       { keys: ['⌫', 'Canc'], labelKey: 'shortcuts.trash' },
       { keys: ['Esc'], labelKey: 'shortcuts.clear' },
     ],
