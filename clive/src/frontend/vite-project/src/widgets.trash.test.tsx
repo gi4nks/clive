@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, cleanup, waitFor, within } from '@testing-library/react'
 import i18n from './i18n'
 
 const mocks = vi.hoisted(() => ({
@@ -67,7 +67,15 @@ describe('TrashWidget empty', () => {
     fireEvent.click(screen.getByTitle('Trash'))
     await screen.findByText('x.txt') // wait for the async list (button disabled until loaded)
     fireEvent.click(screen.getByText('Empty Trash'))
-    fireEvent.click(await screen.findByText('Empty'))
+    // the confirm sheet must portal out of the popover onto the window body
+    const sheet = await waitFor(() => {
+      const el = document.querySelector('[data-trash-confirm]')
+      if (!el) throw new Error('no sheet')
+      expect(el.parentElement).toBe(document.body)
+      return el
+    })
+    expect(sheet.classList.contains('fixed')).toBe(false)
+    fireEvent.click(within(sheet as HTMLElement).getByText('Empty'))
     await waitFor(() => expect(mocks.trashEmpty).toHaveBeenCalled())
     await waitFor(() => expect(screen.queryByTitle('Trash')).not.toBeNull())
   })

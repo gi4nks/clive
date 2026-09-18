@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import { diskSpace, openPath, formatSize, formatDate, revealInFinder, trashList, trashRestore, trashDeleteForever, trashEmpty, type DiskSpace, type TrashItem } from './api'
 import type { MenuItem } from './ContextMenu'
@@ -356,6 +357,7 @@ export function TrashWidget({ ctx }: { ctx: WidgetCtx }) {
   )
 
   return (
+    <>
     <Popover
       align="right"
       open={open}
@@ -402,21 +404,26 @@ export function TrashWidget({ ctx }: { ctx: WidgetCtx }) {
         </button>
       </div>
 
-      {confirm && (
-        <div className="modal modal-open fixed inset-0 z-[60]" onMouseDown={() => setConfirm(false)}>
-          <div className="modal-box max-w-sm" onMouseDown={(e) => e.stopPropagation()}>
-            <h3 className="mb-2 font-semibold">{t('trash.confirmTitle')}</h3>
-            <p className="text-sm text-base-content/70">{t('trash.confirmBody', { count })}</p>
-            <div className="mt-4 flex justify-end gap-2">
-              <button data-bar-control className="btn btn-ghost btn-sm" onClick={() => setConfirm(false)}>{t('common.cancel')}</button>
-              <button data-bar-control className="btn btn-error btn-sm" onClick={() => { setConfirm(false); setOpen(false); void act(async () => { await trashEmpty(); ctx.refresh() }, t('trash.emptied')) }}>
-                {t('trash.confirm')}
-              </button>
-            </div>
+    </Popover>
+    {/* Portal to <body>: inside the Popover panel an ancestor transform traps
+        position:fixed and the sheet renders stuck in the status-bar footer. */}
+    {confirm && createPortal(
+      <div className="modal modal-open z-[70]" data-trash-confirm onMouseDown={() => setConfirm(false)}>
+        <div className="modal-box max-w-sm" onMouseDown={(e) => e.stopPropagation()}>
+          <h3 className="mb-2 font-semibold">{t('trash.confirmTitle')}</h3>
+          <p className="text-sm text-base-content/70">{t('trash.confirmBody', { count })}</p>
+          <div className="mt-4 flex justify-end gap-2">
+            <button data-bar-control className="btn btn-ghost btn-sm" onClick={() => setConfirm(false)}>{t('common.cancel')}</button>
+            <button data-bar-control className="btn btn-error btn-sm" onClick={() => { setConfirm(false); setOpen(false); void act(async () => { await trashEmpty(); ctx.refresh() }, t('trash.emptied')) }}>
+              {t('trash.confirm')}
+            </button>
           </div>
         </div>
-      )}
-    </Popover>
+        <div className="modal-backdrop bg-black/40" onClick={() => setConfirm(false)} />
+      </div>,
+      document.body,
+    )}
+    </>
   )
 }
 
