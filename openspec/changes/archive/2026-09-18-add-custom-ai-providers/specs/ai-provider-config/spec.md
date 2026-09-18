@@ -15,14 +15,14 @@ provider list.
 - **WHEN** the user opens ollama
 - **THEN** only base URL/key are editable; no remove control is offered
 
-### Requirement: Cloud actions require an opt-in
-The cloud classification used for the opt-in gate SHALL come from the gateway's
-per-provider `cloud` flag (derived from the base URL), not from a front-end
-table.
+#### Scenario: Saved key takes effect immediately
+- **WHEN** the user saves an API key for a provider in Settings → AI
+- **THEN** subsequent AI actions use it (health/online reflects the provider) even
+  without relaunching the app
 
-#### Scenario: Offline mode hides cloud custom providers
-- **WHEN** cloud opt-in is off and a custom provider points to `https://api.deepseek.com/v1`
-- **THEN** that provider is hidden from selection
+#### Scenario: Secrets are not exported with settings
+- **WHEN** the user exports settings from the app
+- **THEN** the provider API keys stored in `~/.clive/ai.env` are not included
 
 ## ADDED Requirements
 

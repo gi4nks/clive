@@ -3,20 +3,20 @@
 *.log
 
 # Rust build artifacts
-fm/target/
-fm/src-tauri/target/
+clive/target/
+
 
 # Node
 node_modules/
-fm/src/frontend/vite-project/node_modules/
-fm/node_modules/
+clive/src/frontend/vite-project/node_modules/
+clive/node_modules/
 
 # Frontend build output
-fm/src/frontend/vite-project/dist/
-fm/src/frontend/vite-project/.vite/
+clive/src/frontend/vite-project/dist/
+clive/src/frontend/vite-project/.vite/
 
 # Tauri / bundling
-fm/gen/schemas/
+clive/gen/schemas/
 
 # Agent / tool state
 .build/
@@ -27,9 +27,14 @@ fm/gen/schemas/
 # Secrets
 .env
 .env.local
-.claive/ai.env
+.clive/ai.env
+~/.clive/ai.env
 
 # Editor
 .idea/
 .vscode/
 *.swp
+
+# Agent/tooling scaffolding (local only)
+.claude/
+.specify/

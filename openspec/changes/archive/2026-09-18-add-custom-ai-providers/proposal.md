@@ -22,6 +22,7 @@ Clive currently hard-codes the developer's personal AI setup: three providers ba
 ### Modified Capabilities
 - `ai-gateway`: provider table no longer static; health/models endpoints expose custom providers; config commands generalized.
 - `ai-provider-config`: Settings UI manages providers; provider list no longer hard-coded in the frontend; empty/auto default selection.
+- `settings-ai-integration`: cloud gate reads the derived per-provider `cloud` flag instead of a front-end table.
 
 ## Impact
 
