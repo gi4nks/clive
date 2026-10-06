@@ -15,7 +15,7 @@ summarize and chat — that always ask before touching your files and are undoab
   free/used and safe eject (incl. network mounts)
 - **Preview panel** for images, video, audio, PDF, markdown, text — plus
   **read-only browsing of `.zip` archives** (extract with zip-slip protection)
-- **AI layer** (via [wise](https://www.npmjs.com/package/@gi4nks/wise)): any
+- **AI layer** (via [Wise](https://github.com/gi4nks/wise), checked out as a pinned local Git submodule): any
   OpenAI-compatible provider can be added from Settings; cloud usage is opt-in;
   every mutation goes through a validated plan + undo journal
 - Native **macOS look**: vibrancy, overlay titlebar, sheets, ⌘/ shortcut map
@@ -23,10 +23,11 @@ summarize and chat — that always ask before touching your files and are undoab
 ## Getting started
 
 ```sh
+git clone --recurse-submodules https://github.com/gi4nks/clive.git
 cd clive
-npm --prefix src/frontend/vite-project ci
-cargo tauri dev      # development
-cargo tauri build    # release bundle in target/release/bundle
+make setup
+make dev       # development
+make build     # release bundle in target/release/bundle
 ```
 
 Requirements: macOS, Xcode CLT, Rust, Node ≥ 20.
@@ -43,10 +44,10 @@ entered in **Settings → AI**; shell env vars take priority.
 | `openspec/changes/archive/` | Historical change proposals (why each feature exists) |
 | `docs/plans`, `docs/specs` | Design records for the AI chat/plan subsystems |
 | `docs/archive/` | Superseded planning docs (spec-kit era) |
-| `CHANGELOG.md` | Release history; version source is `clive/tauri.conf.json` |
+| `CHANGELOG.md` | Release history; version source is `tauri.conf.json` |
 
 ## Versioning & releases
 
-SemVer, defined once in `clive/tauri.conf.json` (`build.rs` fails the build on
+SemVer, defined once in `tauri.conf.json` (`build.rs` fails the build on
 drift with `Cargo.toml`/`package.json`). Releases are tagged `vX.Y.Z`; the
 `About` section in Settings shows version, build date, and git commit.

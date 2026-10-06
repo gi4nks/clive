@@ -2,17 +2,17 @@
 
 ## Project Structure
 
-The repository root contains product documentation and the canonical OpenSpec specifications. The application lives in `clive/`: Rust/Tauri code is under `clive/src-tauri/`, and the React/TypeScript UI is under `clive/src/frontend/vite-project/`. Frontend tests sit beside their source files as `*.test.ts` or `*.test.tsx`. App icons and packaging assets are in `clive/icons/` and `clive/branding/`. Keep behavior aligned with `openspec/specs/`; proposal history is in `openspec/changes/archive/`.
+The repository root is the Clive Tauri application: Rust/Tauri code is under `src-tauri/`, and the React/TypeScript UI is under `frontend/`. Wise is pinned as a Git submodule at `vendor/wise` and consumed from that local path. Frontend tests sit beside their source files as `*.test.ts` or `*.test.tsx`. App icons and packaging assets are in `icons/` and `branding/`. Keep behavior aligned with `openspec/specs/`; proposal history is in `openspec/changes/archive/`.
 
 ## Build, Test, and Development
 
-Run commands from the repository root unless noted:
+Run commands from the repository root:
 
-- `cd clive && cargo tauri dev` starts the desktop app for development.
-- `cd clive && cargo tauri build` creates a release bundle under `clive/target/release/bundle/`.
-- `cd clive/src/frontend/vite-project && npm ci` installs pinned frontend dependencies.
-- `cd clive/src/frontend/vite-project && npm test` runs Vitest once; `npm run lint` runs Oxlint; `npm run build` type-checks and builds with Vite.
-- `cd clive && cargo test` runs Rust tests; `cargo fmt --check` checks Rust formatting and `cargo clippy --all-targets` runs Clippy.
+- `make setup` initializes Wise and installs/builds both JavaScript packages.
+- `make dev` starts the desktop app for development.
+- `make build` creates a release bundle under `target/release/bundle/`.
+- `make frontend-test` runs Vitest; `make frontend-check` runs Oxlint and Vite's type-check/build.
+- `cargo test` runs Rust tests; `cargo fmt --check` checks Rust formatting and `cargo clippy --all-targets` runs Clippy.
 
 ## Coding Style and Naming
 
@@ -32,4 +32,5 @@ Never commit provider keys, personal paths, or machine-specific identifiers. Use
 
 ## Recent Changes
 
+- Flattened the Tauri app to the repository root, moved the Vite app to `frontend/`, and pinned `@gi4nks/wise` as a local `file:` dependency backed by the `vendor/wise` Git submodule. `make setup` initializes and builds the submodule before installing the frontend.
 - Added read-only Get Info for one file or folder from the main toolbar and file context menu. Folder details report recursive file size and direct child count; symbolic links are not followed. ZIP members and multi-selections do not offer this action. See `openspec/specs/context-menu/spec.md` and `openspec/specs/fs-commands/spec.md`.

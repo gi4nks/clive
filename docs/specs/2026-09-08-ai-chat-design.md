@@ -29,8 +29,8 @@ Aggiungere a Clive (file manager Tauri) una **chat AI multi-turno** in un drawer
 
 | Componente | Path | Responsabilità |
 |---|---|---|
-| `ChatDrawer` | `src/frontend/vite-project/src/ai/ChatDrawer.tsx` | UI del drawer: thread messaggi, input, card inline, banner errori |
-| `useChat` | `src/frontend/vite-project/src/ai/chat.ts` | Controller: stato messaggi, streaming, parse azioni, budget, trim cronologia |
+| `ChatDrawer` | `frontend/src/ai/ChatDrawer.tsx` | UI del drawer: thread messaggi, input, card inline, banner errori |
+| `useChat` | `frontend/src/ai/chat.ts` | Controller: stato messaggi, streaming, parse azioni, budget, trim cronologia |
 | Parser azioni | dentro `chat.ts` | Estrae il blocco `<<<ACTIONS>>>` dal messaggio, valida JSON, separa dal testo |
 
 ### 3.2 Modifiche a file esistenti

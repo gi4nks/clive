@@ -28,7 +28,7 @@ Non sostituisce il flusso `<<<ACTIONS>>>` esistente (che resta per modifiche pun
 
 | Componente | Path | Responsabilità |
 |---|---|---|
-| `plan.ts` (puro) | `src/frontend/vite-project/src/ai/plan.ts` | Tipi (`Plan`, `PlanOp`, `ModelPlanShape`), `expandPlan(modelJson, listing, ctx)`, `orderPlanOps(ops)`, `validateFolderPath(path): NameCheck` |
+| `plan.ts` (puro) | `frontend/src/ai/plan.ts` | Tipi (`Plan`, `PlanOp`, `ModelPlanShape`), `expandPlan(modelJson, listing, ctx)`, `orderPlanOps(ops)`, `validateFolderPath(path): NameCheck` |
 | `usePlan.ts` | `src/ai/usePlan.ts` | Stato locale del pannello (include/exclude, editing nome/destinazione, progress, report), wrapper su `apply_plan`/`undo_plan` invoke e listener `plan-progress` |
 | `createPlanFromMessage.ts` | `src/ai/createPlanFromMessage.ts` | Pipeline App-side (ruling R8, implementata al posto di `useChat.planFor`): health probe → `generatePlan` → `expandPlan` → `Plan` |
 | `PlanPanel.tsx` | `src/ai/PlanPanel.tsx` | Overlay modale con albero, checkbox, inline-edit, barra azioni, secondo-confirm cestino, progresso, report + Annulla tutto |
@@ -41,7 +41,7 @@ Non sostituisce il flusso `<<<ACTIONS>>>` esistente (che resta per modifiche pun
 - `src/ai/ChatDrawer.tsx`: ogni messaggio assistente può mostrare un bottone **🪄 "Crea piano"** (disabilitato durante lo streaming e oltre il cap di 5000 entry). Il click **forwarda solo il testo del messaggio** tramite la prop `onCreatePlan(text)`; la UI resta passiva (ruling R8).
 - ~~`src/ai/useChat.ts`: espone `planFor(msgIdx)`~~ → **non implementato**: per R8 la pipeline vive in App (handler `onCreatePlan` → `createPlanFromMessage.ts` → `usePlan.setPlan`). `useChat` non conosce il Plan.
 - `src/App.tsx`: istanzia `usePlan`, gestisce l'handler `onCreatePlan` (via `createPlanFromMessage`), passa `guardOn = cfg.guardSystemLocations` via `allowSystem()` (stessa funzione che oggi passa `allowSystem` a `rename`/`delete_to_trash`), monta `<PlanPanel>` come overlay a livello App (sopra ChatDrawer quando aperto) e persiste l'ultimo batch applicato in localStorage per l'undo post-riavvio (R11).
-- `src/frontend/vite-project/src/api.ts`: aggiunti wrapper `applyPlan(batchId, ops, allowSystem)`, `undoPlan(batchId, allowSystem)`, `onPlanProgress(cb)` (via `@tauri-apps/api/event`).
+- `frontend/src/api.ts`: aggiunti wrapper `applyPlan(batchId, ops, allowSystem)`, `undoPlan(batchId, allowSystem)`, `onPlanProgress(cb)` (via `@tauri-apps/api/event`).
 - `src/ai/budget.ts`: riusa `renderDirListing` per il prompt (già presente).
 - `src/ai/safety.ts`: riuso `validateNewName` per i **singoli segmenti** dei percorsi cartella; aggiungo `validateFolderPath(path): NameCheck` in `plan.ts` (sottile wrapper che splitta su `/` e chiama `validateNewName` per ogni segmento, rifiutando `..`, `\0`, spazi, vuoto).
 
@@ -247,6 +247,6 @@ Target: suite TS + Rust + `make build` verdi; almeno 1 test Rust end-to-end "app
 
 ## 15. Riferimenti
 
-- Spec chat: `clive/docs/specs/2026-09-08-ai-chat-design.md`
-- Plan chat: `clive/docs/plans/2026-09-08-ai-chat.md`
+- Spec chat: `docs/specs/2026-09-08-ai-chat-design.md`
+- Plan chat: `docs/plans/2026-09-08-ai-chat.md`
 - Moduli riusati: `safety.ts::validateNewName`, `systemGuard.ts::isProtectedPath`, `budget.ts::renderDirListing`, `apply.ts::InverseOp`, trash unificato in `commands/trash.rs`.

@@ -25,7 +25,7 @@ fn main() {
                 .and_then(|r| r.split('\"').next().map(str::to_string))
         })
         .unwrap();
-    let pkg = std::fs::read_to_string("src/frontend/vite-project/package.json").unwrap();
+    let pkg = std::fs::read_to_string("frontend/package.json").unwrap();
     let pkg_version = pkg
         .lines()
         .find_map(|l| l.contains("\"version\":").then(|| l.split('\"').nth(3).map(str::to_string)).flatten())
@@ -50,6 +50,6 @@ fn main() {
     println!("cargo:rerun-if-changed=../.git/HEAD");
     println!("cargo:rerun-if-changed=tauri.conf.json");
     println!("cargo:rerun-if-changed=Cargo.toml");
-    println!("cargo:rerun-if-changed=src/frontend/vite-project/package.json");
+    println!("cargo:rerun-if-changed=frontend/package.json");
     println!("cargo:rerun-if-changed=src");
 }

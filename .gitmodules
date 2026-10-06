@@ -1,0 +1,3 @@
+[submodule "vendor/wise"]
+	path = vendor/wise
+ url = ../wise.git

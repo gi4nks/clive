@@ -3,20 +3,18 @@
 *.log
 
 # Rust build artifacts
-clive/target/
-
+/target/
+/dist/
 
 # Node
 node_modules/
-clive/src/frontend/vite-project/node_modules/
-clive/node_modules/
 
 # Frontend build output
-clive/src/frontend/vite-project/dist/
-clive/src/frontend/vite-project/.vite/
+frontend/dist/
+frontend/.vite/
 
 # Tauri / bundling
-clive/gen/schemas/
+gen/schemas/
 
 # Agent / tool state
 .build/
@@ -28,7 +26,6 @@ clive/gen/schemas/
 .env
 .env.local
 .clive/ai.env
-~/.clive/ai.env
 
 # Editor
 .idea/

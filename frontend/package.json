@@ -1,5 +1,5 @@
 {
-  "name": "vite-project",
+  "name": "clive-frontend",
   "private": true,
   "version": "1.1.0",
   "type": "module",
@@ -12,7 +12,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@gi4nks/wise": "^2.0.0",
+    "@gi4nks/wise": "file:../vendor/wise",
     "@tailwindcss/postcss": "^4.3.3",
     "@tauri-apps/api": "^2.11.1",
     "@tauri-apps/plugin-store": "^2.4.4",

@@ -4,10 +4,10 @@
   "version": "1.1.0",
   "identifier": "com.gi4nks.filemanager",
   "build": {
-    "beforeDevCommand": "npm --prefix src/frontend/vite-project run dev",
+    "beforeDevCommand": "make -C \"$(git rev-parse --show-toplevel)\" frontend-dev",
     "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "npm --prefix src/frontend/vite-project run build",
-    "frontendDist": "src/frontend/vite-project/dist"
+    "beforeBuildCommand": "make -C \"$(git rev-parse --show-toplevel)\" frontend-build",
+    "frontendDist": "frontend/dist"
   },
   "app": {
     "windows": [

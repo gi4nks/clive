@@ -1,7 +1,7 @@
 # Changelog
 
 All notable changes to Clive are documented here.
-Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows SemVer, with the version defined once in `clive/tauri.conf.json` (build.rs enforces Cargo/package parity). Releases are tagged `vX.Y.Z` (annotated).
+Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows SemVer, with the version defined once in `tauri.conf.json` (build.rs enforces Cargo/package parity). Releases are tagged `vX.Y.Z` (annotated).
 
 ## [1.1.0] - 2026-09-14
 ### Added
