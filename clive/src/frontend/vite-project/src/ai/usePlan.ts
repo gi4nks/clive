@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { applyPlan, undoPlan, onPlanProgress } from '../api.js'
 import type { ApplyReport, PlanProgress } from '../api.js'
 import type { Plan, PlanOp } from './plan.js'
 import { validateFolderPath } from './plan.js'
 import { validateNewName } from './safety.js'
 import { addDebugEvent, getDebugLog, updateDebugLog, type PlanDebugApply } from './usePlanDebug.js'
+import { proposalFromPlan } from './proposal.js'
 
 /** Panel lifecycle. Task 5 renders on these values:
  * - 'review'   → tree + checkboxes, Apply enabled
@@ -72,6 +73,7 @@ export function usePlan() {
    * that coincide with updateOp's local ones. */
   const authoritativeRef = useRef<Set<string>>(new Set())
   const aliveRef = useRef(true)
+  const proposal = useMemo(() => (plan ? proposalFromPlan(plan) : null), [plan])
 
   const stopProgress = () => {
     void unsubRef.current?.()
@@ -179,12 +181,13 @@ export function usePlan() {
     setProgress(null)
     setPhase('applying')
     const included = p.ops.filter((o) => o.included && !o.issue)
+    const semantic = proposalFromPlan(p)
     const opsByKind = included.reduce<Record<string, number>>((acc, o) => {
       acc[o.kind] = (acc[o.kind] ?? 0) + 1
       return acc
     }, {})
     const applyStarted = Date.now()
-    if (p.debugId) addDebugEvent(p.debugId, { stage: 'apply', type: 'start', metadata: { total: p.ops.length, included: included.length } })
+    if (p.debugId) addDebugEvent(p.debugId, { stage: 'apply', type: 'start', metadata: { total: p.ops.length, included: included.length, risk: semantic.risk, review: semantic.review } })
     if (p.debugId) updateDebugLog(p.debugId, {
       apply: {
         status: 'pending', startedAt: applyStarted, batchId: id,
@@ -253,7 +256,7 @@ export function usePlan() {
       unsubRef.current = unsub
       const r = await undoPlan(id)
       setUndoReport(r)
-      setPhase('undone')
+      setPhase(r.failed.length ? 'applied' : 'undone')
       if (planRef.current?.debugId) updateDebugLog(planRef.current.debugId, {
         apply: { ...(getDebugApply(planRef.current.debugId) ?? emptyDebugApply(planRef.current.ops)), status: 'success', finishedAt: Date.now(), report: { undo: r } },
       })
@@ -271,5 +274,5 @@ export function usePlan() {
     }
   }, [])
 
-  return { plan, phase, progress, report, undoReport, batchId, error, setPlan, close, toggleOp, updateOp, apply, undo }
+  return { plan, proposal, phase, progress, report, undoReport, batchId, error, setPlan, close, toggleOp, updateOp, apply, undo }
 }

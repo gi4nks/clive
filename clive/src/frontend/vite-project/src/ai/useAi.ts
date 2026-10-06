@@ -19,10 +19,13 @@ import {
   summarize,
   type OrganizePlan,
 } from './actions'
-import { applyPlan, undoPlan } from './apply'
-import { collectFileContents, fs, writeFile } from './fs'
+import { collectFileContents, fs, moveToTrash, writeFile } from './fs'
 import { modelCapabilities, visionGate } from './capabilities'
 import { validateNewName, type InverseOp } from './safety'
+import { createProposal } from './proposal.js'
+import { useAiProposal } from './useAiProposal.js'
+import { snapshotContext } from './context.js'
+import type { LocationDescriptor } from '../location.js'
 
 export type AiKind = 'rename' | 'summarize' | 'organize' | 'generate' | 'apply'
 export interface RenameRow {
@@ -36,6 +39,9 @@ export interface RenameRow {
 export interface AiDeps {
   currentPath: string
   entries: FileEntry[]
+  selectedPaths: string[]
+  guardOn: boolean
+  location?: LocationDescriptor
   setStatus: (msg: string, kind: 'success' | 'error' | 'info') => void
   refresh: () => void
 }
@@ -60,6 +66,21 @@ export function useAi(deps: AiDeps) {
   const [journal, setJournal] = useState<InverseOp[] | null>(null)
   const [error, setError] = useState('')
   const abortRef = useRef<AbortController | null>(null)
+  const proposalContextRef = useRef<ReturnType<typeof snapshotContext> | null>(null)
+  const currentContext = () => snapshotContext({
+    rootPath: depsRef.current.currentPath,
+    entries: depsRef.current.entries,
+    selectedPaths: depsRef.current.selectedPaths,
+    guardOn: depsRef.current.guardOn,
+    location: depsRef.current.location,
+  })
+  const proposal = useAiProposal({
+    fs,
+    writeFile,
+    moveToTrash,
+    getContext: currentContext,
+    contextChangedMessage: i18n.t('ai.contextChanged'),
+  })
 
   const full = fullModelId(sel)
 
@@ -160,6 +181,7 @@ export function useAi(deps: AiDeps) {
       setOrganize(null)
       setSummary('')
       const d = depsRef.current
+      proposalContextRef.current = currentContext()
       const files = await collectFileContents(selected)
       const proposals = await proposeRenames(files, d.entries.map((e) => e.name), { model: full, health: h, signal })
       setRows(
@@ -205,6 +227,7 @@ export function useAi(deps: AiDeps) {
       setRows(null)
       setSummary('')
       setExcluded(new Set())
+      proposalContextRef.current = currentContext()
       const files = await collectFileContents(selected)
       setOrganize(await proposeOrganize(files, { model: full, health: h, signal }))
     })
@@ -212,13 +235,21 @@ export function useAi(deps: AiDeps) {
   const runMultiRename = (renames: { path: string; newName: string }[]) =>
     run('apply', async () => {
       if (!renames.length) return
-      const res = await applyPlan(fs, { renames })
+      proposalContextRef.current = currentContext()
+      const res = await proposal.apply(createProposal({
+        origin: 'quick-action',
+        rootPath: depsRef.current.currentPath,
+        operations: renames.map((rename, index) => ({ ...rename, id: `rename:${index}`, kind: 'rename' as const })),
+        location: depsRef.current.location,
+        context: proposalContextRef.current ?? currentContext(),
+      }))
       if (res.applied) {
         setJournal(res.undo)
         depsRef.current.setStatus(i18n.t('rename.applied', { count: res.applied }), 'success')
         depsRef.current.refresh()
       }
       if (res.failures.length) depsRef.current.setStatus(i18n.t('ai.errors', { count: res.failures.length }), 'error')
+      proposalContextRef.current = null
     })
 
   const requestGenerate = (prompt: string) =>
@@ -227,6 +258,7 @@ export function useAi(deps: AiDeps) {
       assertUsable()
       const h = await ensureHealth()
       if (!h.ok) throw new Error(i18n.t('ai.providerUnreachable'))
+      proposalContextRef.current = currentContext()
       setGen(null)
       setGen(await generateContent(prompt, { model: full, health: h, signal }))
     })
@@ -240,8 +272,20 @@ export function useAi(deps: AiDeps) {
           d.setStatus(i18n.t('ai.invalidName'), 'error')
           return
         }
-        await writeFile(`${d.currentPath}/${chk.name}`, gen.body)
+        const res = await proposal.apply(createProposal({
+          origin: 'quick-action',
+          rootPath: d.currentPath,
+          operations: [{ id: 'create-file:0', kind: 'createFile', path: `${d.currentPath}/${chk.name}`, content: gen.body }],
+          location: d.location,
+          context: proposalContextRef.current ?? currentContext(),
+        }))
+        if (res.failures.length) {
+          d.setStatus(res.failures.map((failure) => failure.error).join('; '), 'error')
+          return
+        }
+        if (!res.applied) return
         setGen(null)
+        proposalContextRef.current = null
         d.setStatus(i18n.t('ai.fileCreated'), 'success')
         d.refresh()
         return
@@ -250,29 +294,52 @@ export function useAi(deps: AiDeps) {
         const renames = rows
           .filter((r) => r.ok && validateNewName(r.to).ok && validateNewName(r.to).name !== r.from)
           .map((r) => ({ path: r.path, newName: r.to }))
-        setRows(null)
         if (!renames.length) return
-        const res = await applyPlan(fs, { renames })
+        const res = await proposal.apply(createProposal({
+          origin: 'quick-action',
+          rootPath: d.currentPath,
+          operations: renames.map((rename, index) => ({ ...rename, id: `rename:${index}`, kind: 'rename' as const })),
+          location: d.location,
+          context: proposalContextRef.current ?? currentContext(),
+        }))
         if (res.applied) {
+          setRows(null)
           setJournal(res.undo)
           d.setStatus(i18n.t('ai.renamed', { count: res.applied }), 'success')
           d.refresh()
         }
         if (res.failures.length) d.setStatus(i18n.t('ai.errors', { count: res.failures.length }), 'error')
+        proposalContextRef.current = null
         return
       }
       if (organize) {
         const kept: OrganizePlan = { ...organize, moves: organize.moves.filter((m) => !excluded.has(m.src)) }
         const { folders, moves } = organizeToApply(kept, d.currentPath)
-        setOrganize(null)
         if (!folders.length && !moves.length) return
-        const res = await applyPlan(fs, { folders, moves })
+        const res = await proposal.apply(createProposal({
+          origin: 'quick-action',
+          rootPath: d.currentPath,
+          operations: [
+            ...folders.map((path, index) => ({ id: `folder:${index}`, kind: 'createFolder' as const, path })),
+            ...moves.map((move, index) => ({
+              id: `move:${index}`,
+              kind: 'move' as const,
+              path: move.src,
+              destDir: move.dst.slice(0, move.dst.lastIndexOf('/')) || d.currentPath,
+              destName: move.dst.slice(move.dst.lastIndexOf('/') + 1),
+            })),
+          ],
+          location: d.location,
+          context: proposalContextRef.current ?? currentContext(),
+        }))
         if (res.applied) {
+          setOrganize(null)
           setJournal(res.undo)
           d.setStatus(i18n.t('ai.organized', { count: moves.length }), 'success')
           d.refresh()
         }
         if (res.failures.length) d.setStatus(i18n.t('ai.errors', { count: res.failures.length }), 'error')
+        proposalContextRef.current = null
       }
     })
 
@@ -282,13 +349,15 @@ export function useAi(deps: AiDeps) {
     setGen(null)
     setSummary('')
     setError('')
+    proposalContextRef.current = null
   }
 
   const undo = async () => {
     if (!journal) return
-    const res = await undoPlan(fs, journal)
+    const res = await proposal.undo()
     setJournal(null)
-    depsRef.current.setStatus(res.applied ? i18n.t('ai.restored') : i18n.t('ai.nothingToRestore'), res.applied ? 'success' : 'info')
+    const applied = res?.applied ?? 0
+    depsRef.current.setStatus(applied ? i18n.t('ai.restored') : i18n.t('ai.nothingToRestore'), applied ? 'success' : 'info')
     depsRef.current.refresh()
   }
 

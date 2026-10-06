@@ -7,6 +7,7 @@
     "refresh": "Aggiorna (⌘R)",
     "newFolder": "Nuova cartella (⌘N)",
     "rename": "Rinomina (Invio)",
+    "info": "Ottieni informazioni",
     "trash": "Cestino (⌫)",
     "copy": "Copia (⌘C)",
     "cut": "Taglia (⌘X)",
@@ -47,7 +48,8 @@
     "deleteTitle": "Sposta nel Cestino?",
     "deleteBody_one": "Spostare {{count}} elemento nel Cestino?",
     "deleteBody_other": "Spostare {{count}} elementi nel Cestino?",
-    "deleteConfirm": "Sposta nel Cestino"
+    "deleteConfirm": "Sposta nel Cestino",
+    "networkDeleteBody": "Questa è una posizione di rete. Il recupero potrebbe non essere disponibile se la connessione si interrompe."
   },
   "places": {
     "title": "Luoghi",
@@ -75,7 +77,8 @@
     "moved_one": "Spostato {{count}} elemento",
     "moved_other": "Spostati {{count}} elementi",
     "failed_one": "{{count}} elemento non riuscito",
-    "failed_other": "{{count}} elementi non riusciti"
+    "failed_other": "{{count}} elementi non riusciti",
+    "nonAtomic": "Lo spostamento ha attraversato volumi diversi ed è avvenuto tramite copia e rimozione; l'annullamento non è garantito."
   },
   "fileList": {
     "folder": "Cartella",
@@ -185,7 +188,21 @@
     "pin": "Fissa nella barra",
     "unpin": "Rimuovi dalla barra",
     "systemTag": "sistema",
-    "multiRename": "Rinomina con pattern…"
+    "multiRename": "Rinomina con pattern…",
+    "info": "Ottieni informazioni"
+  },
+  "fileInfo": {
+    "title": "Informazioni elemento",
+    "name": "Nome",
+    "kind": "Tipo",
+    "location": "Percorso",
+    "size": "Dimensione",
+    "items": "Elementi contenuti",
+    "modified": "Modificato",
+    "created": "Creato",
+    "permissions": "Permessi",
+    "unavailable": "Non disponibile",
+    "error": "Impossibile leggere le informazioni"
   },
   "status": {
     "emptyName": "Nome cartella vuoto",
@@ -240,7 +257,9 @@
     "cloudDisabled": "Cloud disabilitato: abilitalo nelle Impostazioni → AI",
     "noVision": "Modello senza visione",
     "visionSkipped": "{{count}} immagine/i ignorate (modello senza visione)",
-    "copy": "Copiar"
+    "copy": "Copia",
+    "workspaceTitle": "Workspace AI",
+    "contextChanged": "La cartella o la selezione dei file è cambiata. Rigenera la proposta prima di applicarla."
   },
   "validate": {
     "emptyName": "Nome vuoto",
@@ -262,6 +281,16 @@
     "activity": "Attività AI",
     "copied": "Copiato!",
     "dropHint": "Rilascia per allegare",
+    "workspace": {
+      "chat": "Chat",
+      "actions": "Azioni",
+      "plan": "Piano",
+      "context": "Contesto",
+      "selected_one": "{{count}} selezionato",
+      "selected_other": "{{count}} selezionati",
+      "network": "volume di rete",
+      "reviewPlan": "Rivedi piano"
+    },
     "action": {
       "rename": "Rinomina",
       "organize": "Sposta in cartella",

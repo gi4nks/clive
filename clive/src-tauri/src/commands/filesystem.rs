@@ -14,6 +14,19 @@ pub struct FileEntry {
     pub extension: Option<String>,
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FileInfo {
+    pub name: String,
+    pub path: String,
+    pub is_dir: bool,
+    pub size: Option<u64>,
+    pub modified: u64,
+    pub created: Option<u64>,
+    pub permissions: String,
+    pub child_count: Option<u64>,
+}
+
 pub(crate) fn normalize(path: &str) -> PathBuf {
     let trimmed = path.trim();
     if trimmed == "~" || trimmed.starts_with("~/") {
@@ -148,7 +161,127 @@ pub fn home_dir() -> Result<String, String> {
         .ok_or_else(|| "HOME not set".to_string())
 }
 
+#[tauri::command]
+pub async fn file_info(path: String) -> Result<FileInfo, String> {
+    tokio::task::spawn_blocking(move || file_info_sync(path))
+        .await
+        .map_err(|e| format!("file information task failed: {e}"))?
+}
+
+fn file_info_sync(path: String) -> Result<FileInfo, String> {
+    let p = normalize(&path);
+    require_mounted_path(&p).map_err(|e| e.to_string())?;
+    let meta = fs::metadata(&p).map_err(|e| format!("cannot inspect '{}': {e}", p.display()))?;
+    let epoch = |time: std::io::Result<std::time::SystemTime>| {
+        time.ok()
+            .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
+            .map(|d| d.as_secs())
+    };
+    let child_count = if meta.is_dir() {
+        fs::read_dir(&p).ok().map(|entries| entries.flatten().count() as u64)
+    } else {
+        None
+    };
+    let size = if meta.is_dir() {
+        directory_size(&p).ok()
+    } else if meta.is_file() {
+        Some(meta.len())
+    } else {
+        Some(0)
+    };
+    #[cfg(unix)]
+    let permissions = {
+        use std::os::unix::fs::PermissionsExt;
+        format!("{:04o}", meta.permissions().mode() & 0o7777)
+    };
+    #[cfg(not(unix))]
+    let permissions = if meta.permissions().readonly() { "read-only" } else { "read/write" }.to_string();
+
+    Ok(FileInfo {
+        name: p.file_name().unwrap_or(p.as_os_str()).to_string_lossy().into_owned(),
+        path: p.to_string_lossy().into_owned(),
+        is_dir: meta.is_dir(),
+        size,
+        modified: epoch(meta.modified()).unwrap_or(0),
+        created: epoch(meta.created()),
+        permissions,
+        child_count,
+    })
+}
+
+fn directory_size(root: &Path) -> std::io::Result<u64> {
+    let mut total = 0u64;
+    let mut pending = vec![root.to_path_buf()];
+    while let Some(dir) = pending.pop() {
+        for entry in fs::read_dir(dir)? {
+            let entry = entry?;
+            let path = entry.path();
+            let metadata = fs::symlink_metadata(&path)?;
+            if metadata.file_type().is_symlink() {
+                continue;
+            }
+            if metadata.is_dir() {
+                pending.push(path);
+            } else if metadata.is_file() {
+                total = total.saturating_add(metadata.len());
+            }
+        }
+    }
+    Ok(total)
+}
+
+/// Refuse writes through a disconnected /Volumes mount, including restore
+/// paths whose missing parents would otherwise be recreated on the boot disk.
+pub(crate) fn require_mounted_path(path: &Path) -> std::io::Result<()> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        if let Ok(relative) = path.strip_prefix("/Volumes") {
+            if let Some(std::path::Component::Normal(name)) = relative.components().next() {
+                let mount = Path::new("/Volumes").join(name);
+                let meta = fs::metadata(&mount)?;
+                if meta.dev() == fs::metadata("/Volumes")?.dev() {
+                    return Err(std::io::Error::new(std::io::ErrorKind::NotConnected, "Volume is not mounted"));
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Conservative mount identity: a remount requires a fresh operation/review.
+pub(crate) fn mount_identity(path: &Path) -> Result<Option<String>, String> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        if let Ok(relative) = path.strip_prefix("/Volumes") {
+            if let Some(std::path::Component::Normal(name)) = relative.components().next() {
+                require_mounted_path(path).map_err(|e| e.to_string())?;
+                let meta = fs::metadata(Path::new("/Volumes").join(name)).map_err(|e| e.to_string())?;
+                let mount = Path::new("/Volumes").join(name);
+                let output = std::process::Command::new("/sbin/mount").output().map_err(|e| e.to_string())?;
+                if !output.status.success() { return Err("Cannot inspect mounted volumes".into()); }
+                let marker = format!(" on {} (", mount.display());
+                let table = String::from_utf8_lossy(&output.stdout);
+                let source = table.lines().find_map(|line| line.split_once(&marker).map(|(source, _)| source))
+                    .ok_or("Volume is not mounted")?;
+                return Ok(Some(format!("{}:{}:{}", source, meta.dev(), meta.ino())));
+            }
+        }
+    }
+    Ok(None)
+}
+
+pub(crate) fn verify_mount_identity(path: &Path, expected: &Option<String>) -> Result<(), String> {
+    if &mount_identity(path)? != expected {
+        return Err("Volume identity changed; reconnect the original volume and review again".into());
+    }
+    Ok(())
+}
+
 pub fn copy_path(src: &Path, dst: &Path) -> std::io::Result<()> {
+    require_mounted_path(src)?;
+    require_mounted_path(dst)?;
     if !src.exists() {
         return Err(std::io::Error::new(
             std::io::ErrorKind::NotFound,
@@ -180,19 +313,30 @@ fn copy_dir_recursive(src: &Path, dst: &Path) -> std::io::Result<()> {
     Ok(())
 }
 
-pub fn move_path(src: &Path, dst: &Path) -> std::io::Result<()> {
+/// Move a path and report whether the operation stayed on one filesystem.
+/// Cross-device moves use copy-then-remove and are therefore not atomic.
+pub fn move_path_with_mode(src: &Path, dst: &Path) -> std::io::Result<bool> {
+    require_mounted_path(src)?;
+    require_mounted_path(dst)?;
     match fs::rename(src, dst) {
-        Ok(()) => Ok(()),
-        Err(_) => {
+        Ok(()) => Ok(true),
+        Err(rename_err) if rename_err.kind() == std::io::ErrorKind::CrossesDevices => {
             // Cross-device fallback: copy then remove
-            copy_path(src, dst)?;
+            copy_path(src, dst).map_err(|copy_err| {
+                std::io::Error::new(copy_err.kind(), format!("copy fallback after rename ({rename_err}): {copy_err}"))
+            })?;
             if src.is_dir() {
-                fs::remove_dir_all(src)
+                fs::remove_dir_all(src).map(|()| false)
             } else {
-                fs::remove_file(src)
+                fs::remove_file(src).map(|()| false)
             }
         }
+        Err(rename_err) => Err(rename_err),
     }
+}
+
+pub fn move_path(src: &Path, dst: &Path) -> std::io::Result<()> {
+    move_path_with_mode(src, dst).map(|_| ())
 }
 
 #[tauri::command]
@@ -262,12 +406,17 @@ pub struct TransferFailure {
 pub struct TransferResult {
     pub applied: usize,
     pub failures: Vec<TransferFailure>,
+    /// True when at least one move used copy-then-remove across filesystems.
+    pub non_atomic: bool,
 }
 
 /// Batch copy/move of `paths` into `dst_dir` with collision-free naming — one
 /// round-trip instead of N `copy_file`/`move_file` calls.
 #[tauri::command]
 pub fn transfer_items(paths: Vec<String>, dst_dir: String, mode: String, allow_system: bool) -> Result<TransferResult, String> {
+    if mode != "copy" && mode != "move" {
+        return Err("Invalid transfer mode".to_string());
+    }
     let copy = mode == "copy";
     // Move removes the originals: pre-check the whole batch so a protected source
     // aborts everything before any filesystem change (atomic).
@@ -283,6 +432,7 @@ pub fn transfer_items(paths: Vec<String>, dst_dir: String, mode: String, allow_s
     }
     let mut applied = 0;
     let mut failures = Vec::new();
+    let mut non_atomic = false;
     let mut claimed: std::collections::HashSet<String> = std::collections::HashSet::new();
     for src_str in &paths {
         let src = normalize(src_str);
@@ -294,18 +444,22 @@ pub fn transfer_items(paths: Vec<String>, dst_dir: String, mode: String, allow_s
             }
         };
         let dst = unique_dst(&dst_dir, &name, src.is_dir(), &mut claimed);
-        let res = if copy { copy_path(&src, &dst) } else { move_path(&src, &dst) };
+        let res = if copy { copy_path(&src, &dst).map(|()| true) } else { move_path_with_mode(&src, &dst) };
         match res {
-            Ok(()) => applied += 1,
+            Ok(atomic) => {
+                applied += 1;
+                if !copy && !atomic { non_atomic = true; }
+            }
             Err(e) => failures.push(TransferFailure { src: src_str.clone(), error: e.to_string() }),
         }
     }
-    Ok(TransferResult { applied, failures })
+    Ok(TransferResult { applied, failures, non_atomic })
 }
 
 #[tauri::command]
 pub fn rename(path: String, new_name: String, allow_system: bool) -> Result<(), String> {
     let src = normalize(&path);
+    require_mounted_path(&src).map_err(|e| e.to_string())?;
     if !allow_system && is_protected(&src) {
         return Err(protected_err(&src));
     }
@@ -327,6 +481,7 @@ pub fn rename(path: String, new_name: String, allow_system: bool) -> Result<(), 
 #[tauri::command]
 pub fn create_folder(parent: String, name: String, allow_system: bool) -> Result<String, String> {
     let dir = normalize(&parent).join(name.trim());
+    require_mounted_path(&dir).map_err(|e| e.to_string())?;
     if !allow_system && is_protected(&dir) {
         return Err(protected_err(&dir));
     }
@@ -341,6 +496,7 @@ pub fn read_text_file(path: String) -> Result<String, String> {
 
 #[tauri::command]
 pub fn write_text_file(path: String, content: String) -> Result<(), String> {
+    require_mounted_path(&normalize(&path)).map_err(|e| e.to_string())?;
     fs::write(normalize(&path), content).map_err(|e| e.to_string())
 }
 
@@ -648,6 +804,48 @@ pub fn open_terminal(path: String) -> Result<(), String> {
 #[cfg(test)]
 mod guard_tests {
     use super::*;
+
+    #[test]
+    fn file_info_reports_file_and_folder_metadata() {
+        let root = std::env::temp_dir().join(format!("clive-file-info-{}", std::process::id()));
+        fs::create_dir_all(&root).unwrap();
+        let file = root.join("sample.txt");
+        fs::write(&file, "hello").unwrap();
+        let nested = root.join("nested");
+        fs::create_dir_all(&nested).unwrap();
+        fs::write(nested.join("inside.bin"), "123").unwrap();
+
+        let file_details = file_info_sync(file.to_string_lossy().into_owned()).unwrap();
+        assert_eq!(file_details.name, "sample.txt");
+        assert!(!file_details.is_dir);
+        assert_eq!(file_details.size, Some(5));
+        assert!(file_details.created.is_some());
+        assert!(file_details.child_count.is_none());
+
+        let folder_info = file_info_sync(root.to_string_lossy().into_owned()).unwrap();
+        assert!(folder_info.is_dir);
+        assert_eq!(folder_info.size, Some(8));
+        assert_eq!(folder_info.child_count, Some(2));
+
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn missing_mount_cannot_be_recreated_by_writes() {
+        let path = format!("/Volumes/clive-absent-test-{}/docs", std::process::id());
+        assert!(!Path::new(&path).exists());
+        assert!(create_folder(path.clone(), "child".into(), false).is_err());
+        assert!(write_text_file(format!("{path}/file"), "test".into()).is_err());
+        assert!(!Path::new(&path).exists());
+    }
+
+    #[test]
+    fn identity_mismatch_is_rejected_without_mutation() {
+        let expected = Some("previous-server:1:2".to_string());
+        assert!(verify_mount_identity(Path::new("/tmp"), &expected).is_err());
+        assert!(verify_mount_identity(Path::new("/tmp"), &None).is_ok());
+        assert!(verify_mount_identity(Path::new("/Volumes/clive-absent-identity-test/file"), &expected).is_err());
+    }
 
     #[test]
     fn protects_top_level_roots() {

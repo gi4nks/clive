@@ -9,15 +9,17 @@ import { basename } from './safety'
  * right-click context menu. Shows the in-flight state, the summary output, and
  * the editable rename/organize/generate previews with Apply/Cancel, plus Undo.
  */
-export function AiOverlay({ ai }: { ai: AiController }) {
+export function AiOverlay({ ai, embedded = false, showHeader = true }: { ai: AiController; embedded?: boolean; showHeader?: boolean }) {
   const { t } = useTranslation()
   const [copied, setCopied] = useState(false)
   const { busy, hasPreview, summary, rows, organize, gen, journal, error } = ai
   if (!busy && !hasPreview && !journal && !error) return null
 
   return (
-    <div className="fixed bottom-9 right-2 z-50 flex max-h-[65vh] w-96 flex-col gap-2 rounded-box border border-base-300 bg-base-100 p-3 text-base-content shadow-xl">
-      <div className="flex items-center justify-between">
+    <div className={embedded
+      ? 'flex h-full w-full flex-col gap-2 bg-base-100 p-3 text-base-content'
+      : 'fixed bottom-9 right-2 z-50 flex max-h-[65vh] w-96 flex-col gap-2 rounded-box border border-base-300 bg-base-100 p-3 text-base-content shadow-xl'}>
+      {showHeader && <div className="flex items-center justify-between">
         <span className="flex items-center gap-2 text-sm font-semibold">
           {busy && busy !== 'apply' && <span className="loading loading-spinner loading-xs" />}
           {busy ? t('ai.processing') : t('ai.result')}
@@ -26,7 +28,7 @@ export function AiOverlay({ ai }: { ai: AiController }) {
         data-tip={t('common.close')} onClick={() => (busy ? ai.abort() : ai.cancel())}>
           ✕
         </button>
-      </div>
+      </div>}
 
       {busy && !hasPreview && !error && <div className="text-xs text-base-content/60">{t('ai.waiting')}</div>}
 

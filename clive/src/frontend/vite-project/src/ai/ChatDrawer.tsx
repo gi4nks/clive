@@ -11,6 +11,8 @@ export const SILENT_ISSUES: ReadonlySet<string> = new Set(['target outside curre
 
 export interface ChatDrawerProps {
   open: boolean
+  embedded?: boolean
+  showHeader?: boolean
   onClose: () => void
   ai: ChatController
   /** R8: 🪄 click only forwards the message content; App runs the plan pipeline. */
@@ -34,7 +36,7 @@ export interface ChatDrawerProps {
  * streaming: `useChat.send` silently drops overlapping sends, so the UI must
  * not let the user start one (Task-4 residual finding).
  */
-export function ChatDrawer({ open, onClose, ai, onCreatePlan, canPlan = true, planBusy = false, onCancelPlan, onOpenDebug, onOpenActivity, planElapsed = 0 }: ChatDrawerProps) {
+export function ChatDrawer({ open, embedded = false, showHeader = true, onClose, ai, onCreatePlan, canPlan = true, planBusy = false, onCancelPlan, onOpenDebug, onOpenActivity, planElapsed = 0 }: ChatDrawerProps) {
   const { t } = useTranslation()
   const [input, setInput] = useState('')
   const [copied, setCopied] = useState(false)
@@ -86,10 +88,10 @@ export function ChatDrawer({ open, onClose, ai, onCreatePlan, canPlan = true, pl
   }
 
   return (
-    <div className="fixed inset-0 z-40 flex justify-end">
-      <div className="absolute inset-0 bg-black/40" onClick={onClose} aria-hidden />
+    <div className={embedded ? 'relative flex h-full w-full justify-end' : 'fixed inset-0 z-40 flex justify-end'}>
+      {!embedded && <div className="absolute inset-0 bg-black/40" onClick={onClose} aria-hidden />}
       <div
-        className="relative z-10 flex h-full w-[420px] flex-col border-l border-base-300 bg-base-100 shadow-2xl"
+        className={`relative z-10 flex h-full ${embedded ? 'w-full' : 'w-[420px]'} flex-col border-l border-base-300 bg-base-100 shadow-2xl`}
         data-testid="chat-drop-target"
         onDragOver={(e) => {
           e.preventDefault()
@@ -103,7 +105,7 @@ export function ChatDrawer({ open, onClose, ai, onCreatePlan, canPlan = true, pl
             {t('chat.dropHint')}
           </div>
         )}
-        <div className="flex items-center justify-between border-b border-base-300 px-4 py-3">
+        {showHeader && <div className="flex items-center justify-between border-b border-base-300 px-4 py-3">
           <span className="text-sm font-semibold">{t('chat.title')}</span>
           <div className="flex items-center gap-1">
             {(onOpenActivity || onOpenDebug) && (
@@ -123,7 +125,7 @@ export function ChatDrawer({ open, onClose, ai, onCreatePlan, canPlan = true, pl
               title={t('common.close')}
         data-tip={t('common.close')}>✕</button>
           </div>
-        </div>
+        </div>}
 
         {ai.historyTruncated && (
           <div className="mx-3 mt-2 rounded-md border border-warning/40 bg-warning/10 px-2 py-1 text-[11px] text-warning">
@@ -179,7 +181,9 @@ export function ChatDrawer({ open, onClose, ai, onCreatePlan, canPlan = true, pl
                     validation={v}
                     applied={m.actionsApplied?.[j]}
                     error={m.actionErrors?.[j]}
+                    requiresPlan={v.ok && !!v.requiresPlan}
                     onApply={() => void ai.applyAction(i, j)}
+                    onReviewPlan={() => void ai.applyAction(i, j)}
                     onCancel={() => ai.cancelAction(i, j)}
                   />
                 ))}
@@ -311,14 +315,18 @@ function ActionCard({
   validation,
   applied,
   error,
+  requiresPlan,
   onApply,
+  onReviewPlan,
   onCancel,
 }: {
   a: ChatAction
-  validation: { ok: true } | { ok: false; error: string }
+  validation: { ok: true; requiresPlan?: boolean } | { ok: false; error: string }
   applied?: boolean
   error?: string | null
+  requiresPlan?: boolean
   onApply: () => void
+  onReviewPlan: () => void
   onCancel: () => void
 }) {
   const { t } = useTranslation()
@@ -339,9 +347,15 @@ function ActionCard({
       {!blocked && !isApplied && !isCancelled && error && <div className="mb-1 text-error">{error}</div>}
       {!isApplied && !isCancelled && (
         <div className="flex gap-1">
-          <button className="btn btn-primary btn-xs" disabled={blocked} onClick={onApply}>
-            {t('common.apply')}
-          </button>
+          {requiresPlan ? (
+            <button className="btn btn-secondary btn-xs" disabled={blocked || !onReviewPlan} onClick={onReviewPlan}>
+              {t('chat.workspace.reviewPlan')}
+            </button>
+          ) : (
+            <button className="btn btn-primary btn-xs" disabled={blocked} onClick={onApply}>
+              {t('common.apply')}
+            </button>
+          )}
           <button className="btn btn-ghost btn-xs" onClick={onCancel}>
             {t('common.cancel')}
           </button>

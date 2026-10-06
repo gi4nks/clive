@@ -58,6 +58,8 @@ pub enum Inverse {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct JournalFile {
+    #[serde(default)]
+    mounts: std::collections::BTreeMap<String, Option<String>>,
     version: u32,
     batch_id: String,
     created_at: u64,
@@ -205,6 +207,9 @@ fn is_ancestor_or_same(anc: &Path, p: &Path) -> bool {
 }
 
 fn run_op(op: &PlanOpInput, allow_system: bool) -> Outcome {
+    if let Err(e) = crate::commands::filesystem::require_mounted_path(&normalize(path_of(op))) {
+        return Outcome::Failed(e.to_string());
+    }
     match op {
         PlanOpInput::CreateFolder { path, .. } => {
             let p = normalize(path);
@@ -349,12 +354,20 @@ fn apply_ops(
         .map(|p| p.to_string_lossy().into_owned())
         .unwrap_or_default();
     let mut journal = JournalFile {
+        mounts: std::collections::BTreeMap::new(),
         version: 1,
         batch_id: batch_id.to_string(),
         created_at: now_secs(),
         root_path,
         entries: Vec::new(),
     };
+    for op in ops.iter().filter(|op| included_of(op)) {
+        let mut paths = vec![path_of(op)];
+        if let PlanOpInput::Move { dest_dir, .. } = op { paths.push(dest_dir); }
+        for path in paths {
+            journal.mounts.insert(path.to_string(), crate::commands::filesystem::mount_identity(&normalize(path))?);
+        }
+    }
     write_journal(&journal)?;
 
     let mut ordered: Vec<&PlanOpInput> = ops.iter().collect();
@@ -375,7 +388,10 @@ fn apply_ops(
         let id = id_of(op).to_string();
         done += 1;
         let outcome = if included_of(op) {
-            run_op(op, allow_system)
+            let changed = journal.mounts.iter().find_map(|(path, identity)| {
+                crate::commands::filesystem::verify_mount_identity(&normalize(path), identity).err()
+            });
+            if let Some(error) = changed { Outcome::Failed(error) } else { run_op(op, allow_system) }
         } else {
             Outcome::Skipped
         };
@@ -411,6 +427,17 @@ fn inverse_label(inv: &Inverse) -> String {
 }
 
 fn run_inverse(inv: &Inverse, allow_system: bool) -> Outcome {
+    let paths = match inv {
+        Inverse::RemoveDir { path, .. } => vec![path],
+        Inverse::RenameBack { path, to } => vec![path, to],
+        Inverse::MoveBack { from, to } => vec![from, to],
+        Inverse::RestoreFromTrash { slot, to } => vec![slot, to],
+    };
+    for path in paths {
+        if let Err(e) = crate::commands::filesystem::require_mounted_path(&normalize(path)) {
+            return Outcome::Failed(e.to_string());
+        }
+    }
     match inv {
         Inverse::RemoveDir { path, was_new } => {
             let p = normalize(path);
@@ -519,6 +546,10 @@ fn undo_ops(
     }
 
     let total = journal.entries.len();
+    for (path, identity) in &journal.mounts {
+        crate::commands::filesystem::verify_mount_identity(&normalize(path), identity)?;
+    }
+    let mut remaining = journal.clone();
     let mut report = ApplyReport {
         applied: 0,
         skipped: 0,
@@ -531,6 +562,7 @@ fn undo_ops(
     for (i, inv) in journal.entries.iter().rev().enumerate() {
         let current_id = inverse_label(inv);
         let outcome = run_inverse(inv, allow_system);
+        let completed = !matches!(&outcome, Outcome::Failed(_));
         match outcome {
             Outcome::Applied(_) => report.applied += 1,
             Outcome::Skipped => report.skipped += 1,
@@ -540,14 +572,17 @@ fn undo_ops(
                 error: e,
             }),
         }
+        if completed {
+            remaining.entries.remove(total - 1 - i);
+            write_journal(&remaining)?;
+        }
         on_progress(i + 1, total, &current_id);
     }
 
     report.duration_ms = started.elapsed().as_millis();
 
-    // Only consume the journal when something was actually restored: if every
-    // inverse failed (e.g. Finder emptied), keep it so a retry isn't lost.
-    if report.applied > 0 {
+    // Failed inverses remain retryable even after partial success.
+    if remaining.entries.is_empty() {
         let done_path = jpath.with_extension("undone.json");
         fs::rename(&jpath, &done_path).map_err(|e| e.to_string())?;
     }
@@ -607,6 +642,31 @@ mod tests {
     use crate::commands::trash::TRASH_TEST_LOCK;
 
     static SEQ: AtomicU64 = AtomicU64::new(0);
+
+    #[test]
+    fn partial_undo_preserves_only_failed_entries_for_retry() {
+        let _lock = TRASH_TEST_LOCK.lock().unwrap();
+        let base = temp_base("partial-undo");
+        set_env(&base);
+        let folder = base.join("created");
+        fs::create_dir(&folder).unwrap();
+        let journal = JournalFile {
+            mounts: std::collections::BTreeMap::new(),
+            version: 1, batch_id: "partial".into(), created_at: 0,
+            root_path: s(&base), entries: vec![
+                Inverse::RenameBack { path: "/System/blocked".into(), to: s(&base.join("target")) },
+                Inverse::RemoveDir { path: s(&folder), was_new: true },
+            ],
+        };
+        write_journal(&journal).unwrap();
+        let report = undo_ops("partial", false, &mut |_, _, _| {}).unwrap();
+        assert_eq!(report.applied, 1);
+        assert_eq!(report.failed.len(), 1);
+        let remaining: JournalFile = serde_json::from_str(&fs::read_to_string(journal_path("partial")).unwrap()).unwrap();
+        assert_eq!(remaining.entries.len(), 1);
+        assert!(!folder.exists());
+        clear_env(&base);
+    }
 
     fn temp_base(tag: &str) -> PathBuf {
         let n = SEQ.fetch_add(1, Ordering::Relaxed);

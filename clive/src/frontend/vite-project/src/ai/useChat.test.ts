@@ -4,6 +4,7 @@ import { useChat } from './useChat.js'
 import { CANCELLED_SENTINEL } from './chat.js'
 import * as runtime from './runtime.js'
 import * as fsBridge from './fs.js'
+vi.mock('./reviewProposal.js', () => ({ reviewProposal: vi.fn(async () => true) }))
 
 vi.mock('./runtime.js', () => ({
   streamChat: vi.fn(),

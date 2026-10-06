@@ -11,6 +11,8 @@ use crate::commands::filesystem::{is_protected, move_path, normalize, protected_
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct TrashItem {
+    #[serde(default)]
+    pub mount_identity: Option<String>,
     pub id: String,
     pub original_path: String,
     pub deleted_at: u64,
@@ -164,9 +166,11 @@ pub fn delete_to_trash(path: String, allow_system: bool) -> Result<(), String> {
         .unwrap_or_else(|| "item".to_string());
     let id = unique_in_dir(&root, &desired, meta.is_dir());
     let slot = root.join(&id);
+    let mount_identity = crate::commands::filesystem::mount_identity(&src)?;
     move_path(&src, &slot).map_err(|e| format!("Move to trash failed: {e}"))?;
 
     let item = TrashItem {
+        mount_identity,
         id,
         original_path: src.to_string_lossy().into_owned(),
         deleted_at: now_secs(),
@@ -214,6 +218,8 @@ pub fn trash_restore(id: String) -> Result<String, String> {
         return Err("Item is no longer in the trash".to_string());
     }
     let original = PathBuf::from(&item.original_path);
+    crate::commands::filesystem::verify_mount_identity(&original, &item.mount_identity)?;
+    crate::commands::filesystem::require_mounted_path(&original).map_err(|e| e.to_string())?;
     if let Some(parent) = original.parent() {
         fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
@@ -317,6 +323,7 @@ mod tests {
         fs::create_dir_all(&dir).unwrap();
         let jpath = dir.join("journal.json");
         let items = vec![TrashItem {
+            mount_identity: None,
             id: "x1".into(),
             original_path: "/orig/x.txt".into(),
             deleted_at: 10,

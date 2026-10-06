@@ -17,6 +17,17 @@ export interface FileEntry {
   extension: string | null
 }
 
+export interface FileInfo {
+  name: string
+  path: string
+  isDir: boolean
+  size: number | null
+  modified: number
+  created: number | null
+  permissions: string
+  childCount: number | null
+}
+
 export interface ClipboardInfo {
   paths: string[]
   operation: string | null
@@ -32,6 +43,7 @@ export interface DiskSpace {
 export const listDir = (path: string, showHidden?: boolean) =>
   invoke<FileEntry[]>('list_dir', { path, showHidden })
 export const homeDir = () => invoke<string>('home_dir')
+export const fileInfo = (path: string) => invoke<FileInfo>('file_info', { path })
 export const copyFile = (src: string, dst: string) => invoke<void>('copy_file', { src, dst, allowSystem: allowSystem() })
 export const moveFile = (src: string, dst: string) => invoke<void>('move_file', { src, dst, allowSystem: allowSystem() })
 export const rename = (path: string, newName: string) =>
@@ -92,6 +104,7 @@ export interface TransferFailure {
 export interface TransferResult {
   applied: number
   failures: TransferFailure[]
+  nonAtomic?: boolean
 }
 export const transferItems = (paths: string[], dstDir: string, mode: 'copy' | 'move') =>
   invoke<TransferResult>('transfer_items', { paths, dstDir, mode, allowSystem: allowSystem() })

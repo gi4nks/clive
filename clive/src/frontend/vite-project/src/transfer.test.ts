@@ -67,12 +67,13 @@ describe('transferBatch', () => {
     expect(transferItems).toHaveBeenCalledWith(['/a/x', '/a/y'], '/b', 'move')
   })
 
-  it('falls back to per-op copy/move when the batch command errors', async () => {
+  it('does not replay mutations after an ambiguous batch failure', async () => {
     ;(transferItems as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('no cmd'))
     ;(moveFile as ReturnType<typeof vi.fn>).mockClear()
     const r = await transferBatch(['/a/x'], '/b', 'move')
-    expect(r.applied).toBe(1)
-    expect(moveFile).toHaveBeenCalledWith('/a/x', '/b/x')
+    expect(r.applied).toBe(0)
+    expect(r.failures).toHaveLength(1)
+    expect(moveFile).not.toHaveBeenCalled()
   })
 
   it('no-ops on empty input', async () => {

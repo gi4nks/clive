@@ -12,6 +12,7 @@ export type { TransferResult } from './api'
 export interface TransferOutcome {
   applied: number
   failures: { src: string; error: string }[]
+  nonAtomic?: boolean
 }
 
 export type TransferMode = 'copy' | 'move'
@@ -71,8 +72,8 @@ export async function runTransfer(
 
 /**
  * Transfer `paths` into `dstDir` with collision-free naming. Preferred: the
- * Rust `transfer_items` batch command (one round-trip). Fallback: per-op client
- * planning via `planTransfer` (used when the command is unavailable, e.g. tests).
+ * Rust `transfer_items` batch command (one round-trip). An ambiguous failure
+ * is reported without retrying mutations that may already have completed.
  */
 export async function transferBatch(
   paths: string[],
@@ -82,9 +83,9 @@ export async function transferBatch(
   if (!paths.length) return { applied: 0, failures: [] }
   try {
     const res = await transferItems(paths, dstDir, mode)
-    return { applied: res.applied, failures: res.failures }
-  } catch {
-    const ops = planTransfer(paths, dstDir, [])
-    return runTransfer(ops, mode)
+    return { applied: res.applied, failures: res.failures, nonAtomic: res.nonAtomic }
+  } catch (error) {
+    // An IPC failure may arrive after mutations. Never replay the batch.
+    return { applied: 0, failures: paths.map((src) => ({ src, error: String(error) })) }
   }
 }

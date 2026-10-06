@@ -6,7 +6,6 @@
  */
 import { useCallback, useRef, useState } from 'react'
 import type { FileEntry } from '../api.js'
-import { applyPlan } from './apply.js'
 import { budgetFiles, renderBudgeted, renderDirListing } from './budget.js'
 import { buildChatPrompt, extractActions, validateChatAction, CANCELLED_SENTINEL, type ChatMessage } from './chat.js'
 import i18n from '../i18n'
@@ -14,6 +13,10 @@ import { isImageName, modelCapabilities, visionGate } from './capabilities.js'
 import { collectFileContents, fs, moveToTrash, writeFile } from './fs.js'
 import { streamChat, type AiFinishMeta, type StreamArgs } from './runtime.js'
 import { addDebugEvent, addDebugLog, updateDebugLog } from './usePlanDebug.js'
+import { proposalFromChatActions } from './proposal.js'
+import { useAiProposal } from './useAiProposal.js'
+import { snapshotContext, type AiContextSnapshot } from './context.js'
+import type { LocationDescriptor } from '../location.js'
 
 export interface UseChatDeps {
   currentPath: string
@@ -21,6 +24,7 @@ export interface UseChatDeps {
   selected: FileEntry[]
   model: string
   guardOn: boolean
+  location?: LocationDescriptor
   setStatus: (msg: string, kind: 'success' | 'error' | 'info') => void
   refresh: () => void
   /** Injected so tests can fake the model; production uses the real streamChat. */
@@ -28,13 +32,10 @@ export interface UseChatDeps {
 }
 
 export interface ChatMessageState extends ChatMessage {
+  context?: AiContextSnapshot
   streaming?: boolean
   actionsApplied?: boolean[]
   actionErrors?: (string | null)[]
-}
-
-function baseOf(path: string): string {
-  return path.slice(path.lastIndexOf('/') + 1)
 }
 
 export function useChat(deps: UseChatDeps) {
@@ -52,6 +53,13 @@ export function useChat(deps: UseChatDeps) {
   // facts live in refs (send overlap + Apply double-click).
   const streamingRef = useRef(false)
   const inFlightActions = useRef<Set<string>>(new Set())
+  const { apply: applyProposal } = useAiProposal({
+    fs,
+    writeFile,
+    moveToTrash,
+    getContext: () => snapshotContext({ rootPath: depsRef.current.currentPath, entries: depsRef.current.entries, selectedPaths: depsRef.current.selected.map((entry) => entry.path), guardOn: depsRef.current.guardOn, location: depsRef.current.location }),
+    contextChangedMessage: i18n.t('ai.contextChanged'),
+  })
 
   const addFile = useCallback(
     (f: FileEntry) => setAddedFiles((prev) => (prev.some((p) => p.path === f.path) ? prev : [...prev, f])),
@@ -74,6 +82,13 @@ export function useChat(deps: UseChatDeps) {
       const userMsg: ChatMessageState = { role: 'user', content: text }
       setMessages((prev) => [...prev, userMsg])
       const asst: ChatMessageState = { role: 'assistant', content: '', streaming: true }
+      asst.context = snapshotContext({
+        rootPath: depsRef.current.currentPath,
+        entries: depsRef.current.entries,
+        selectedPaths: depsRef.current.selected.map((entry) => entry.path),
+        guardOn: depsRef.current.guardOn,
+        location: depsRef.current.location,
+      })
       setMessages((prev) => [...prev, asst])
       setStreaming(true)
       setBusy(true)
@@ -186,29 +201,24 @@ export function useChat(deps: UseChatDeps) {
           return
         }
         const a = v.action
-        let failures: { op: string; error: string }[] = []
-        if (a.type === 'rename') {
-          const res = await applyPlan(fs, { renames: [{ path: a.file, newName: a.newName }] })
-          failures = res.failures
-        } else if (a.type === 'organize') {
-          const folderPath = `${d.currentPath}/${a.dstFolder}`
-          const dstFile = `${folderPath}/${baseOf(a.file)}`
-          const res = await applyPlan(fs, { folders: [folderPath], moves: [{ src: a.file, dst: dstFile }] })
-          failures = res.failures
-        } else if (a.type === 'createFolder') {
-          const segs = a.folder.split('/').filter(Boolean)
-          let parent = d.currentPath
-          for (const seg of segs) {
-            await fs.createFolder(parent, seg)
-            parent = `${parent}/${seg}`
-          }
-        } else if (a.type === 'create') {
-          await writeFile(a.file, a.content)
-        } else if (a.type === 'trash') {
-          await moveToTrash(a.file)
+        const converted = proposalFromChatActions([a], {
+          snapshot: msg.context,
+          currentDir: d.currentPath,
+          entries: d.entries,
+          selectedPaths: d.selected.map((entry) => entry.path),
+          guardOn: d.guardOn,
+          location: d.location,
+        })
+        const conversionError = converted.invalidActions[0]
+        if (conversionError) {
+          setErrorAt(conversionError.error)
+          d.setStatus(conversionError.error, 'error')
+          return
         }
-        if (failures.length) {
-          const msg2 = failures.map((f) => f.error).join('; ')
+        const applied = await applyProposal(converted.proposal)
+        if (!applied.applied && !applied.failures.length) return
+        if (applied.failures.length) {
+          const msg2 = applied.failures.map((f) => f.error).join('; ')
           setErrorAt(msg2)
           d.setStatus(msg2, 'error')
           return
@@ -228,7 +238,7 @@ export function useChat(deps: UseChatDeps) {
         inFlightActions.current.delete(key)
       }
     },
-    [messages],
+    [messages, applyProposal],
   )
 
   const cancelAction = useCallback((msgIdx: number, actIdx: number) => {
@@ -245,16 +255,19 @@ export function useChat(deps: UseChatDeps) {
   }, [])
 
   const validateAction = useCallback(
-    (msgIdx: number, actIdx: number): { ok: true } | { ok: false; error: string } => {
+    (msgIdx: number, actIdx: number): { ok: true; requiresPlan?: boolean } | { ok: false; error: string } => {
       const a = messages[msgIdx]?.actions?.[actIdx]
       if (!a) return { ok: false, error: 'unknown action' }
-      const v = validateChatAction(a, {
+      const result = proposalFromChatActions([a], {
         currentDir: depsRef.current.currentPath,
-        existingNames: depsRef.current.entries.map((e) => e.name),
-        guardOn: depsRef.current.guardOn,
         entries: depsRef.current.entries,
+        guardOn: depsRef.current.guardOn,
+        location: depsRef.current.location,
       })
-      return v.ok ? { ok: true } : { ok: false, error: v.error }
+      const invalid = result.invalidActions[0]
+      return invalid
+        ? { ok: false, error: invalid.error }
+        : { ok: true, requiresPlan: result.proposal.review === 'plan' && depsRef.current.location?.kind === 'network' }
     },
     [messages],
   )

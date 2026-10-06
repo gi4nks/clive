@@ -29,7 +29,7 @@ The system SHALL apply menu actions to the whole selection when the right-clicke
 - **THEN** the selection is reduced to that item and actions target it
 
 ### Requirement: Generic actions are always available
-The context menu SHALL offer Open/Anteprima, Show in Finder, Copy path, Copy, Cut, Paste, Rename, and Move to Trash.
+The context menu SHALL offer Open/Anteprima, Get Info for a single filesystem item, Show in Finder, Copy path, Copy, Cut, Paste, Rename, and Move to Trash.
 
 #### Scenario: Paste availability
 - **WHEN** the internal clipboard is empty
@@ -38,6 +38,16 @@ The context menu SHALL offer Open/Anteprima, Show in Finder, Copy path, Copy, Cu
 #### Scenario: Rename is single-item only
 - **WHEN** more than one item is targeted
 - **THEN** Rename is disabled
+
+#### Scenario: Get Info for a file or folder
+- **WHEN** the user chooses Get Info for one filesystem item
+- **THEN** Clive shows its name, kind, path, size, direct child count for folders, timestamps, and permissions
+- **AND** folder size is the recursive sum of contained regular-file sizes
+- **AND** the information is read from the filesystem without changing the item
+
+#### Scenario: Get Info is unavailable for multi-selection and archive members
+- **WHEN** the target is a multi-selection or a virtual item inside a ZIP archive
+- **THEN** Get Info is not offered
 
 ### Requirement: Actions adapt to item type
 The system SHALL vary menu content based on the item's type.

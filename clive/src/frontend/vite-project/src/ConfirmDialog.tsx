@@ -10,7 +10,7 @@ export function ConfirmDialog() {
     <div className="modal modal-open z-[95]" role="alertdialog" aria-modal="true" aria-label={req.title} data-confirm-dialog>
       <div className="modal-box max-w-sm rounded-2xl p-0 shadow-2xl">
         <div className="px-5 pt-4 text-sm font-semibold">{req.title}</div>
-        <p className="px-5 py-3 text-sm opacity-80">{req.message}</p>
+        <p className="max-h-[60vh] overflow-auto whitespace-pre-wrap break-words px-5 py-3 text-sm opacity-80">{req.message}</p>
         <div className="flex justify-end gap-2 border-t border-base-300 px-5 py-3">
           <button data-bar-control className="btn btn-sm btn-ghost" autoFocus onClick={() => answerConfirm(false)}>
             {t('common.cancel')}

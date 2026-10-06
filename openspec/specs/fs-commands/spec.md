@@ -16,6 +16,21 @@ The `list_dir` command SHALL accept an optional `showHidden` argument defaulting
 - **WHEN** `list_dir` is invoked with `showHidden` true
 - **THEN** hidden entries are included in the result
 
+### Requirement: file_info returns metadata for a filesystem path
+The system SHALL expose a read-only `file_info(path)` command that reports the name, path, item kind, file byte size or recursive directory size, direct directory child count, modification and creation timestamps when available, and permissions. Directory size SHALL sum regular files without following symbolic links.
+
+#### Scenario: Inspect a file
+- **WHEN** `file_info` is invoked for an existing file
+- **THEN** it returns the file's byte size and available timestamps and permissions
+
+#### Scenario: Inspect a directory
+- **WHEN** `file_info` is invoked for an existing directory
+- **THEN** it returns the recursive regular-file size, direct child count, and available timestamps and permissions
+
+#### Scenario: Inspect a path on an unavailable mount
+- **WHEN** `file_info` is invoked for a path under a disconnected mounted volume
+- **THEN** it returns an error without recreating or mutating the mount path
+
 ### Requirement: disk_space reports volume usage for a path
 The system SHALL expose a `disk_space(path)` command returning total, free, and used bytes and the volume name for the filesystem containing `path`.
 

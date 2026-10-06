@@ -7,6 +7,8 @@
     "refresh": "Refresh (⌘R)",
     "newFolder": "New folder (⌘N)",
     "rename": "Rename (Enter)",
+    "info": "Get Info",
+    "info": "Get Info",
     "trash": "Trash (⌫)",
     "copy": "Copy (⌘C)",
     "cut": "Cut (⌘X)",
@@ -47,7 +49,8 @@
     "deleteTitle": "Move to Trash?",
     "deleteBody_one": "Move {{count}} item to the Trash?",
     "deleteBody_other": "Move {{count}} items to the Trash?",
-    "deleteConfirm": "Move to Trash"
+    "deleteConfirm": "Move to Trash",
+    "networkDeleteBody": "This is a network volume. Recovery may be unavailable if the connection is interrupted."
   },
   "places": {
     "title": "Places",
@@ -75,7 +78,8 @@
     "moved_one": "Moved {{count}} item",
     "moved_other": "Moved {{count}} items",
     "failed_one": "{{count}} item failed",
-    "failed_other": "{{count}} items failed"
+    "failed_other": "{{count}} items failed",
+    "nonAtomic": "This move crossed volumes and used copy then remove; undo is not guaranteed."
   },
   "fileList": {
     "folder": "Folder",
@@ -185,7 +189,21 @@
     "pin": "Pin to Sidebar",
     "unpin": "Unpin from Sidebar",
     "systemTag": "system",
-    "multiRename": "Rename with pattern…"
+    "multiRename": "Rename with pattern…",
+    "info": "Get Info"
+  },
+  "fileInfo": {
+    "title": "Item Information",
+    "name": "Name",
+    "kind": "Kind",
+    "location": "Location",
+    "size": "Size",
+    "items": "Contents",
+    "modified": "Modified",
+    "created": "Created",
+    "permissions": "Permissions",
+    "unavailable": "Unavailable",
+    "error": "Could not read information"
   },
   "status": {
     "emptyName": "Folder name is empty",
@@ -240,7 +258,9 @@
     "cloudDisabled": "Cloud is disabled: enable it in Settings → AI",
     "noVision": "Model has no vision",
     "visionSkipped": "{{count}} image(s) ignored (model without vision)",
-    "copy": "Copy"
+    "copy": "Copy",
+    "workspaceTitle": "AI Workspace",
+    "contextChanged": "The folder or file selection changed. Generate the proposal again before applying it."
   },
   "validate": {
     "emptyName": "Empty name",
@@ -262,6 +282,16 @@
     "activity": "AI activity",
     "copied": "Copied!",
     "dropHint": "Release to attach",
+    "workspace": {
+      "chat": "Chat",
+      "actions": "Actions",
+      "plan": "Plan",
+      "context": "Context",
+      "selected_one": "{{count}} selected",
+      "selected_other": "{{count}} selected",
+      "network": "network volume",
+      "reviewPlan": "Review plan"
+    },
     "action": {
       "rename": "Rename",
       "organize": "Move to folder",

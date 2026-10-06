@@ -36,6 +36,7 @@ import { zipList, zipExtract } from './api'
 import { ErrorBoundary } from './ErrorBoundary'
 import { ShortcutsModal } from './ShortcutsModal'
 import { ConfirmDialog } from './ConfirmDialog'
+import { FileInfoModal } from './FileInfoModal'
 import { MultiRenameModal } from './MultiRenameModal'
 import { PaneRail } from './PaneRail'
 import { ContextMenu, type MenuItem } from './ContextMenu'
@@ -47,9 +48,8 @@ import { StatusBar } from './StatusBar'
 import type { WidgetCtx } from './widgetTypes'
 import { useAppConfig, getAppConfig, initAppConfig, type AppConfig } from './settings/appConfig'
 import { useAi } from './ai/useAi'
-import { AiOverlay } from './ai/AiOverlay'
 import { useChat } from './ai/useChat'
-import { ChatDrawer } from './ai/ChatDrawer'
+import { AiWorkspace } from './ai/AiWorkspace'
 import { AiDebugModal } from './ai/AiDebugModal'
 import { AiActivityCenter } from './ai/AiActivityCenter'
 import { PlanPanel } from './ai/PlanPanel'
@@ -60,6 +60,8 @@ import { SettingsModal } from './settings/SettingsModal'
 import { TransferPicker } from './TransferPicker'
 import { transferBatch } from './transfer'
 import { Sidebar } from './Sidebar'
+import { useVolumes } from './volumes'
+import { describeLocation } from './location'
 import { usePaneSession } from './usePaneSession'
 import { pinPath, unpinPath, reorderPinned } from './pinned'
 import { useTranslation } from 'react-i18next'
@@ -216,6 +218,7 @@ const IconFinder = () => <Ico><circle cx="11" cy="11" r="6" /><path d="M20 20l-4
 
 export default function App() {
   const { t } = useTranslation()
+  const mountedVolumes = useVolumes()
   const [backStack, setBackStack] = useState<string[]>([])
   const [fwdStack, setFwdStack] = useState<string[]>([])
   const [clip, setClip] = useState<ClipboardInfo>({ paths: [], operation: null })
@@ -227,6 +230,7 @@ export default function App() {
     | { x: number; y: number; kind: 'place' | 'recent'; label: string; path: string }
     | { x: number; y: number; kind: 'sidebar'; label: string; path: string; fixed: boolean }
   const [contextMenu, setContextMenu] = useState<CtxMenu | null>(null)
+  const [fileInfoPath, setFileInfoPath] = useState<string | null>(null)
 
   // --- per-pane browse state (dual-pane) ---
   const { panes, setPanes, active, setActive, panesRef, activeRef, patch, patchActive } = usePaneSession()
@@ -234,6 +238,7 @@ export default function App() {
   // Derived active-pane views so existing single-pane code keeps working.
   const P = panes[active]
   const currentPath = P.path
+  const currentLocation = useMemo(() => describeLocation(currentPath, mountedVolumes.volumes), [currentPath, mountedVolumes.volumes])
   const entries = P.entries
   const selected = P.selected
   const searchQuery = P.query
@@ -554,6 +559,9 @@ export default function App() {
   const ai = useAi({
     currentPath,
     entries: visibleEntries,
+    selectedPaths: [...selected],
+    guardOn: cfg.guardSystemLocations,
+    location: currentLocation,
     setStatus: handleSetStatus,
     refresh: () => refresh(currentPath),
   })
@@ -638,18 +646,10 @@ export default function App() {
     selected: selectedEntries,
     model: fullModelId(ai.sel),
     guardOn: cfg.guardSystemLocations,
+    location: currentLocation,
     setStatus: handleSetStatus,
     refresh: () => refresh(currentPath),
   })
-
-  // Chat drawer and AI overlay are mutually exclusive.
-  useEffect(() => {
-    if (chatOpen) ai.cancel()
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- ai.cancel only closes over stable setters
-  }, [chatOpen])
-  useEffect(() => {
-    if (ai.busy || ai.hasPreview) setChatOpen(false)
-  }, [ai.busy, ai.hasPreview])
 
   // --- AI Plan (Task 6): App owns the pipeline; ChatDrawer only forwards 🪄. ---
   const aiPlan = useAiPlanCoordinator({
@@ -698,7 +698,7 @@ export default function App() {
       // M-3: the Rust side keeps a journal whose inverses ALL failed (retry is
       // possible, e.g. trash was restored) — mirror that here and only drop the
       // key when the journal was consumed or nothing failed.
-      const retryable = r.applied === 0 && r.failed.length > 0
+      const retryable = r.failed.length > 0
       if (!retryable) {
         clearLastBatch()
         setLastBatchId(null)
@@ -764,9 +764,9 @@ export default function App() {
   // Respect the "confirm destructive" preference: ask or act directly.
   const requestDelete = useCallback(() => {
     if (!selectedEntries.length) return
-    if (cfg.confirmDestructive) setShowDeleteConfirm(true)
+    if (cfg.confirmDestructive || currentLocation.kind === 'network') setShowDeleteConfirm(true)
     else void handleDelete()
-  }, [selectedEntries.length, cfg.confirmDestructive, handleDelete])
+  }, [selectedEntries.length, cfg.confirmDestructive, currentLocation.kind, handleDelete])
 
   const handleCopyCut = useCallback(
     async (op: 'copy' | 'move') => {
@@ -827,6 +827,7 @@ export default function App() {
       }
       const res = await transferBatch(srcPaths, dstDir, mode)
       if (res.applied) handleSetStatus(i18n.t(mode === 'copy' ? 'transfer.done' : 'transfer.moved', { count: res.applied }), 'success')
+      if (res.nonAtomic) handleSetStatus(i18n.t('transfer.nonAtomic'), 'info')
       if (res.failures.length) handleSetStatus(i18n.t('transfer.failed', { count: res.failures.length }), 'error')
       const ps = panesRef.current
       await Promise.all([refreshPane('left', ps.left.path), refreshPane('right', ps.right.path)])
@@ -976,6 +977,10 @@ export default function App() {
         })
       }
 
+      if (!multi && !isArchivePath(file.path)) {
+        items.push({ key: 'fileInfo', label: i18n.t('menu.info'), icon: mi('M12 11v5M12 7h.01M22 12a10 10 0 1 1-20 0 10 10 0 0 1 20 0Z'), onSelect: () => setFileInfoPath(file.path) })
+      }
+
       const archiveCtx = splitArchivePath(file.path)
       const isZipFile = !file.isDir && /\.zip$/i.test(file.name)
       if (isZipFile) {
@@ -1077,7 +1082,7 @@ export default function App() {
 
       return items
     },
-    [navigate, handleSetStatus, handleCopyCut, handlePaste, clip.paths.length, setRenamingPath, requestDelete, setTransferReq, ai, selectedEntries, pinned, setPinned, cfg.guardSystemLocations],
+    [navigate, handleSetStatus, handleCopyCut, handlePaste, clip.paths.length, setRenamingPath, requestDelete, setTransferReq, setFileInfoPath, ai, selectedEntries, pinned, setPinned, cfg.guardSystemLocations],
   )
 
   const buildSidebarItems = useCallback(
@@ -1475,6 +1480,11 @@ export default function App() {
         >
           <IconRename />
         </ToolButton>
+        <ToolButton label={t('toolbar.info')} disabled={selected.size !== 1 || isArchivePath(selectedEntries[0]?.path ?? '')} onClick={() => selectedEntries[0] && setFileInfoPath(selectedEntries[0].path)}>
+          <svg viewBox="0 0 24 24" className="h-[18px] w-[18px]" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <circle cx="12" cy="12" r="9" /><path d="M12 11v5M12 8h.01" />
+          </svg>
+        </ToolButton>
         <ToolButton label={t('toolbar.trash')} disabled={!selected.size} onClick={() => requestDelete()}>
           <IconTrash />
         </ToolButton>
@@ -1676,7 +1686,6 @@ export default function App() {
         </div>
 
         <StatusBar ctx={widgetCtx} chatOpen={chatOpen} onChat={() => setChatOpen((o) => !o)} />
-      <AiOverlay ai={ai} />
       <ShortcutsModal open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
       <ConfirmDialog />
       {extractTo && (
@@ -1713,10 +1722,17 @@ export default function App() {
           void ai.runMultiRename(renames)
         }}
       />
-      <ChatDrawer
-        open={chatOpen}
-        onClose={() => setChatOpen(false)}
-        ai={chat}
+      <AiWorkspace
+        ai={ai}
+        chat={chat}
+        chatOpen={chatOpen}
+        onChatClose={() => setChatOpen(false)}
+        onChatOpen={() => setChatOpen(true)}
+        onPlanOpen={() => setChatOpen(false)}
+        currentPath={currentPath}
+        location={currentLocation}
+        selectedCount={selectedEntries.length}
+        planOpen={plan.phase !== 'idle'}
         onCreatePlan={(text) => void handleCreatePlan(text)}
         onCancelPlan={cancelCreatePlan}
         canPlan={canPlan}
@@ -1828,6 +1844,9 @@ export default function App() {
           <p className="text-sm text-base-content/60">
             {t('modal.deleteBody', { count: selected.size })}
           </p>
+          {currentLocation.kind === 'network' && (
+            <p className="mt-2 text-sm text-warning">{t('modal.networkDeleteBody')}</p>
+          )}
           <div className="mt-4 flex justify-end gap-2">
             <button
               onClick={() => setShowDeleteConfirm(false)}
@@ -1853,6 +1872,8 @@ export default function App() {
           onClose={() => setContextMenu(null)}
         />
       )}
+
+      {fileInfoPath && <FileInfoModal path={fileInfoPath} onClose={() => setFileInfoPath(null)} />}
 
       {statusMessage && (
         <StatusMessage

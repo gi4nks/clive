@@ -3,7 +3,7 @@
  * "Volumi" section). Loads once per mount; surfaces `refresh` for after eject
  * or popover open. Errors degrade to an empty list (the widgets show a hint).
  */
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useSyncExternalStore } from 'react'
 import { ejectVolume, listVolumes, type Volume } from './api'
 
 export interface VolumesModel {
@@ -14,23 +14,39 @@ export interface VolumesModel {
   eject: (mount: string) => Promise<void>
 }
 
-export function useVolumes(): VolumesModel {
-  const [volumes, setVolumes] = useState<Volume[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState('')
+let snapshot = { volumes: [] as Volume[], loading: true, error: '' }
+const listeners = new Set<() => void>()
+let pending: Promise<void> | undefined
+const subscribe = (listener: () => void) => {
+  listeners.add(listener)
+  return () => { listeners.delete(listener) }
+}
+const getSnapshot = () => snapshot
+export function refreshVolumes(): Promise<void> {
+  if (pending) return pending
+  pending = listVolumes().then((volumes) => {
+    snapshot = { volumes: Array.isArray(volumes) ? volumes : [], loading: false, error: '' }
+  }).catch((error) => {
+    snapshot = { volumes: [], loading: false, error: String(error) }
+  }).finally(() => {
+    pending = undefined
+    listeners.forEach((listener) => listener())
+  })
+  return pending
+}
 
-  const refresh = useCallback(() => {
-    listVolumes()
-      .then((v) => {
-        setVolumes(Array.isArray(v) ? v : [])
-        setError('')
-      })
-      .catch((e) => setError(String(e)))
-      .finally(() => setLoading(false))
-  }, [])
+export function useVolumes(): VolumesModel {
+  const { volumes, loading, error } = useSyncExternalStore(subscribe, getSnapshot, getSnapshot)
+  const refresh = useCallback(() => { void refreshVolumes() }, [])
 
   useEffect(() => {
     refresh()
+    const timer = window.setInterval(refresh, 5000)
+    window.addEventListener('focus', refresh)
+    return () => {
+      window.clearInterval(timer)
+      window.removeEventListener('focus', refresh)
+    }
   }, [refresh])
 
   const eject = useCallback(async (mount: string) => {
