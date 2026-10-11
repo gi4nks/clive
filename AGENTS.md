@@ -33,6 +33,6 @@ Never commit provider keys, personal paths, or machine-specific identifiers. Use
 ## Recent Changes
 
 - Added an expanded preview mode: both file panes reduce to their path rails and the preview fills the remaining workspace; restoring the layout preserves each pane's prior collapsed state.
-- Centralized the Apple Silicon DMG pipeline through `gitea-ci` v1.0.4; Clive retains its Wise submodule and `make setup`/`make build` commands while shared steps install the toolchain, verify the DMG, and upload the artifact.
+- Added a GitHub Actions workflow for Apple Silicon DMG builds and verification; Clive retains its Wise submodule and `make setup`/`make build` commands.
 - Flattened the Tauri app to the repository root, moved the Vite app to `frontend/`, and pinned `@gi4nks/wise` as a local `file:` dependency backed by the `vendor/wise` Git submodule. `make setup` initializes and builds the submodule before installing the frontend.
 - Added read-only Get Info for one file or folder from the main toolbar and file context menu. Folder details report recursive file size and direct child count; symbolic links are not followed. ZIP members and multi-selections do not offer this action. See `openspec/specs/context-menu/spec.md` and `openspec/specs/fs-commands/spec.md`.

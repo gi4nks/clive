@@ -33,6 +33,12 @@ make build     # release bundle in target/release/bundle
 
 Requirements: macOS, Xcode CLT, Rust, Node ≥ 20.
 
+## Continuous integration
+
+GitHub Actions runs the frontend tests and checks, then builds an Apple Silicon
+DMG on pushes to `main`, version tags (`v*`), or manual dispatch. Download the
+DMG from the workflow run's artifacts.
+
 AI credentials live in `~/.clive/ai.env`
 (`CLIVE_PROVIDER_<ID>_BASE_URL` / `CLIVE_PROVIDER_<ID>_API_KEY`) or can be
 entered in **Settings → AI**; shell env vars take priority.
