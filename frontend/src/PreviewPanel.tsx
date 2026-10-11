@@ -15,7 +15,15 @@ const KIND_ICON: Record<string, string> = {
   image: '🖼', video: '🎬', audio: '🎵', pdf: '📄', markdown: '📝', text: '📃', folder: '📁', fallback: '❔',
 }
 
-export function PreviewPanel({ selection }: { selection: FileEntry[] }) {
+export function PreviewPanel({
+  selection,
+  expanded = false,
+  onToggleExpanded = () => undefined,
+}: {
+  selection: FileEntry[]
+  expanded?: boolean
+  onToggleExpanded?: () => void
+}) {
   const { t } = useTranslation()
   const target = selection.length === 1 ? selection[0] : selection[selection.length - 1] ?? null
   const state = usePreview(
@@ -35,7 +43,7 @@ export function PreviewPanel({ selection }: { selection: FileEntry[] }) {
     <section
       data-preview-panel
       aria-label={t('preview.title')}
-      className="flex h-full min-h-0 w-[22rem] shrink-0 flex-col border-l border-base-300 bg-base-100"
+      className={`flex h-full min-h-0 min-w-0 flex-col border-l border-base-300 bg-base-100 ${expanded ? 'flex-1' : 'w-[22rem] shrink-0'}`}
     >
       <header className="flex shrink-0 items-center gap-2 border-b border-base-300 px-3 py-2">
         <span aria-hidden className="text-base">{KIND_ICON[state.kind] ?? '❔'}</span>
@@ -48,6 +56,19 @@ export function PreviewPanel({ selection }: { selection: FileEntry[] }) {
         {selection.length > 1 && (
           <span className="badge badge-sm badge-ghost shrink-0">{t('preview.multiple', { n: selection.length })}</span>
         )}
+        <button
+          type="button"
+          className="btn btn-ghost btn-xs btn-square shrink-0"
+          aria-label={expanded ? t('preview.restoreSize') : t('preview.fillSpace')}
+          title={expanded ? t('preview.restoreSize') : t('preview.fillSpace')}
+          onClick={onToggleExpanded}
+        >
+          <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            {expanded
+              ? <path d="M8 4v4H4m12-4v4h4M4 16h4v4m12-4h-4v4" />
+              : <path d="M4 8V4h4m8 0h4v4M20 16v4h-4M8 20H4v-4" />}
+          </svg>
+        </button>
       </header>
 
       <div className="min-h-0 flex-1 overflow-auto p-2">

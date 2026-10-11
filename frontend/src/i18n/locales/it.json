@@ -461,6 +461,8 @@
   },
   "preview": {
     "title": "Anteprima",
+    "fillSpace": "Espandi l’anteprima e riduci i due pannelli",
+    "restoreSize": "Ripristina disposizione pannelli",
     "empty": "Nessuna anteprima",
     "noSelection": "Seleziona un file per l’anteprima",
     "multiple": "{{n}} selezionati",

@@ -462,6 +462,8 @@
   },
   "preview": {
     "title": "Preview",
+    "fillSpace": "Expand preview and minimize both file panes",
+    "restoreSize": "Restore pane layout",
     "empty": "No preview",
     "noSelection": "Select a file to preview it",
     "multiple": "{{n}} selected",

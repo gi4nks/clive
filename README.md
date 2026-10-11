@@ -4,7 +4,7 @@ A native-feeling, keyboard-first **dual-pane file manager for macOS** (Tauri 2 +
 React), with optional on-device/cloud **AI actions** — rename, organize,
 summarize and chat — that always ask before touching your files and are undoable.
 
-![platform](https://img.shields.io/badge/platform-macOS-blue) ![version](https://img.shields.io/badge/version-1.1.0-green)
+![platform](https://img.shields.io/badge/platform-macOS-blue) ![version](https://img.shields.io/badge/version-1.1.1-green)
 
 ## Highlights
 
@@ -13,7 +13,8 @@ summarize and chat — that always ask before touching your files and are undoab
 - **File operations**: trash with restore, batch rename with live pattern
   preview, drag & drop transfers, pinned sidebar, mounted volumes with
   free/used and safe eject (incl. network mounts)
-- **Preview panel** for images, video, audio, PDF, markdown, text — plus
+- **Preview panel** for images, video, audio, PDF, markdown, text — expandable
+  across the workspace while preserving the saved pane layout — plus
   **read-only browsing of `.zip` archives** (extract with zip-slip protection)
 - **AI layer** (via [Wise](https://github.com/gi4nks/wise), checked out as a pinned local Git submodule): any
   OpenAI-compatible provider can be added from Settings; cloud usage is opt-in;

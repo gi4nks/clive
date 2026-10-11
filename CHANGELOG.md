@@ -3,6 +3,10 @@
 All notable changes to Clive are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows SemVer, with the version defined once in `tauri.conf.json` (build.rs enforces Cargo/package parity). Releases are tagged `vX.Y.Z` (annotated).
 
+## [1.1.1] - 2026-10-11
+### Added
+- Expandable preview mode that preserves the saved collapsed state of each file pane when restoring the layout
+
 ## [1.1.0] - 2026-09-14
 ### Added
 - Portable AI providers: dynamic gateway registry (`CLIVE_PROVIDER_<ID>_*`), add/edit/remove in Settings (master-detail), auto-selected defaults

@@ -30,6 +30,7 @@ import {
 import { type SortKey } from './FileList'
 import { FilePane, type PaneId } from './FilePane'
 import { PreviewPanel } from './PreviewPanel'
+import { restorePaneCollapseState } from './previewLayout'
 import { isArchivePath, splitArchivePath, joinArchivePath, listArchiveEntries, archiveBasename } from './archivePath'
 import { stepRange } from './selection'
 import { zipList, zipExtract } from './api'
@@ -270,6 +271,11 @@ export default function App() {
     localStorage.setItem('fm.split', String(splitPct))
   }, [splitPct])
 
+  const [previewExpanded, setPreviewExpanded] = useState(false)
+  useEffect(() => {
+    if (!cfg.previewPanel) setPreviewExpanded(false)
+  }, [cfg.previewPanel])
+
   // Row drag payload = the row's pane selection (or just the row if unselected).
   const dragPayload = useCallback(
     (id: PaneId, file: FileEntry) => {
@@ -332,11 +338,21 @@ export default function App() {
   // Activate a pane, expanding it first if it's collapsed.
   const activatePane = useCallback(
     (id: PaneId) => {
-      expandPane(id)
+      setPreviewExpanded(false)
+      if (previewExpanded) setCfg({ paneCollapsed: restorePaneCollapseState(getAppConfig().paneCollapsed, id) })
+      else expandPane(id)
       setActive(id)
     },
-    [expandPane],
+    [expandPane, previewExpanded, setCfg, setActive],
   )
+  const togglePreviewExpanded = useCallback(() => {
+    if (previewExpanded) {
+      setPreviewExpanded(false)
+      setCfg({ paneCollapsed: restorePaneCollapseState(getAppConfig().paneCollapsed) })
+    } else {
+      setPreviewExpanded(true)
+    }
+  }, [previewExpanded, setCfg])
   // Collapse/expand a pane (never both collapsed). Collapsing the active pane
   // moves focus to the other one.
   const toggleCollapse = useCallback(
@@ -1617,7 +1633,7 @@ export default function App() {
         </ErrorBoundary>
         <ErrorBoundary name="panes" >
         <div className="flex min-h-0 min-w-0 flex-1">
-          {paneCollapsed.left ? (
+          {previewExpanded || paneCollapsed.left ? (
             <PaneRail id="left" path={panes.left.path} home={home} active={active === 'left'} onExpand={activatePane} />
           ) : (
           <div className="flex min-w-0" style={{ flex: paneCollapsed.right ? 1 : splitPct, minWidth: PANE_MIN }}>
@@ -1647,10 +1663,10 @@ export default function App() {
           />
           </div>
           )}
-          {!paneCollapsed.left && !paneCollapsed.right && (
+          {!previewExpanded && !paneCollapsed.left && !paneCollapsed.right && (
             <SplitHandle className="w-2 shrink-0" label={t('resize.title')} onPointerDown={startSplit} />
           )}
-          {paneCollapsed.right ? (
+          {previewExpanded || paneCollapsed.right ? (
             <PaneRail id="right" path={panes.right.path} home={home} active={active === 'right'} onExpand={activatePane} />
           ) : (
           <div className="flex min-h-0 min-w-0" style={{ flex: paneCollapsed.left ? 1 : 1 - splitPct, minWidth: PANE_MIN }}>
@@ -1680,7 +1696,7 @@ export default function App() {
             />
           </div>
           )}
-          {cfg.previewPanel && <PreviewPanel selection={selectedEntries} />}
+          {cfg.previewPanel && <PreviewPanel selection={selectedEntries} expanded={previewExpanded} onToggleExpanded={togglePreviewExpanded} />}
           </div>
           </ErrorBoundary>
         </div>

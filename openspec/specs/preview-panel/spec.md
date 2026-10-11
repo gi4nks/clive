@@ -49,3 +49,25 @@ current dual-pane widths with no visual trace.
 #### Scenario: Toggle off mid-preview
 - **WHEN** the user hides the panel while a preview is loaded
 - **THEN** panes reclaim the space and held blob URLs are released
+
+### Requirement: Preview can use the available workspace width
+When the preview is visible, the user SHALL be able to expand it across the
+available workspace. In this mode both file panes SHALL collapse visually to
+their navigation rails, while the preview fills the remaining width. Expanding
+the preview SHALL preserve the saved collapsed state of each pane. The header
+restore control SHALL return to that saved pane layout. Selecting a rail SHALL
+expand only that pane if it was collapsed, preserve the other pane's state, and
+return to the normal preview width.
+
+#### Scenario: Expand preview
+- **WHEN** the user expands the preview
+- **THEN** both file panes reduce to their narrow navigation rails
+- **AND** the preview fills the remaining workspace width
+
+#### Scenario: Return to file browsing
+- **WHEN** the user restores the preview after one pane was collapsed before expansion
+- **THEN** that pane remains collapsed and the other pane remains open
+
+#### Scenario: Select a navigation rail
+- **WHEN** the user selects a collapsed pane's navigation rail while the preview is expanded
+- **THEN** that pane opens, the other pane retains its saved collapsed state, and the preview returns to normal width

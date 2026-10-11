@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, cleanup, waitFor } from '@testing-library/react'
+import { render, screen, cleanup, waitFor, fireEvent } from '@testing-library/react'
+import { useState } from 'react'
 import i18n from './i18n'
 
 const mocks = vi.hoisted(() => ({
@@ -18,6 +19,11 @@ import type { FileEntry } from './api'
 
 const file = (name: string, isDir = false): FileEntry => ({ name, path: `/f/${name}`, isDir, size: 1234, modified: 0, extension: null })
 
+function ExpandablePreviewHarness() {
+  const [expanded, setExpanded] = useState(false)
+  return <PreviewPanel selection={[]} expanded={expanded} onToggleExpanded={() => setExpanded((value) => !value)} />
+}
+
 beforeEach(async () => {
   cleanup()
   vi.spyOn(URL, 'createObjectURL').mockImplementation(() => 'blob:fake')
@@ -32,6 +38,19 @@ describe('PreviewPanel', () => {
     render(<PreviewPanel selection={[]} />)
     expect(screen.getByText('Select a file to preview it')).toBeInTheDocument()
     expect(mocks.readFileBytes).not.toHaveBeenCalled()
+  })
+
+  it('expands to fill the workspace and restores its normal width', () => {
+    render(<ExpandablePreviewHarness />)
+    const panel = screen.getByRole('region', { name: 'Preview' })
+
+    expect(panel).toHaveClass('w-[22rem]', 'shrink-0')
+    fireEvent.click(screen.getByRole('button', { name: 'Expand preview and minimize both file panes' }))
+    expect(panel).toHaveClass('flex-1')
+    expect(panel).not.toHaveClass('w-[22rem]', 'shrink-0')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Restore pane layout' }))
+    expect(panel).toHaveClass('w-[22rem]', 'shrink-0')
   })
 
   it('renders an image preview from blob bytes', async () => {
