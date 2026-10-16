@@ -161,7 +161,7 @@ function bootstrap() {
   if (latestVersionTag()) throw new Error('A SemVer tag already exists; remove --bootstrap and use --apply instead.')
   const tag = `v${currentVersion}`
   git(['tag', '-a', tag, '-m', `Clive ${tag} baseline`])
-  console.log(`Created local baseline tag ${tag}. Push it to the canonical Gitea remote to enable tag builds.`)
+  console.log(`Created local baseline tag ${tag}. Push it to the remote that hosts this checkout's release workflow.`)
 }
 
 function release(apply) {
@@ -187,7 +187,7 @@ function release(apply) {
   git(['add', 'tauri.conf.json', 'Cargo.toml', 'Cargo.lock', 'frontend/package.json', 'frontend/package-lock.json', 'CHANGELOG.md', 'README.md'])
   git(['commit', '-m', `chore(release): v${next}`])
   git(['tag', '-a', `v${next}`, '-m', `Clive v${next}`])
-  console.log(`Created release commit and local tag v${next}. Review and push the commit and tag to Gitea to start its release workflow.`)
+  console.log(`Created release commit and local tag v${next}. Review and push the commit and tag to the remote that hosts this checkout's release workflow.`)
 }
 
 function main() {
