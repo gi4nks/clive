@@ -33,9 +33,12 @@ make dev       # development
 make build     # release bundle in target/release/bundle
 ```
 
-GitHub Actions builds the Apple Silicon DMG on pushes to `main` and version
-tags (`vX.Y.Z`). Download the `Clive-macOS-Apple-Silicon` artifact from the
-workflow run in the repository's **Actions** tab.
+GitHub Actions builds the Apple Silicon DMG for version tags (`vX.Y.Z`). The
+app is ad-hoc signed so macOS does not label the downloaded package damaged.
+Since it is not signed with a Developer ID certificate or notarized, macOS
+may still ask you to approve it in **System Settings → Privacy & Security**.
+Download the `Clive-macOS-Apple-Silicon` artifact from the workflow run in the
+repository's **Actions** tab.
 
 Requirements: macOS, Xcode CLT, Rust, Node ≥ 20.
 

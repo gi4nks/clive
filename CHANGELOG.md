@@ -5,6 +5,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning fol
 
 ## [Unreleased]
 
+### Fixed
+- Ad-hoc sign the GitHub macOS app bundle and verify its signature and DMG during CI
+
 ## [1.2.0] - 2026-10-16
 ### Added
 - Semantic release command derives major, minor, or patch versions from Conventional Commits and updates all manifests together

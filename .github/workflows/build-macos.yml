@@ -41,6 +41,16 @@ jobs:
       - name: Build app and DMG
         run: make build
 
+      - name: Verify ad-hoc signature and DMG
+        run: |
+          APP="target/release/bundle/macos/Clive.app"
+          DMG="$(find target/release/bundle/dmg -maxdepth 1 -name 'Clive_*_aarch64.dmg' -print -quit)"
+          test -d "$APP"
+          test -n "$DMG"
+          codesign --verify --deep --strict --verbose=2 "$APP"
+          codesign -dv --verbose=4 "$APP" 2>&1 | grep -q 'Signature=adhoc'
+          hdiutil verify "$DMG"
+
       - name: Upload Apple Silicon DMG
         uses: actions/upload-artifact@v4
         with:
