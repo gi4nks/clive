@@ -4,6 +4,8 @@ All notable changes to Clive are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows SemVer, with the version defined once in `tauri.conf.json` (build.rs enforces Cargo/package parity). Releases are tagged `vX.Y.Z` (annotated).
 
 ## [Unreleased]
+
+## [1.2.0] - 2026-10-16
 ### Added
 - Semantic release command derives major, minor, or patch versions from Conventional Commits and updates all manifests together
 ### Changed

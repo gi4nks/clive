@@ -4,7 +4,7 @@ A native-feeling, keyboard-first **dual-pane file manager for macOS** (Tauri 2 +
 React), with optional on-device/cloud **AI actions** — rename, organize,
 summarize and chat — that always ask before touching your files and are undoable.
 
-![platform](https://img.shields.io/badge/platform-macOS-blue) ![version](https://img.shields.io/badge/version-1.1.2-green)
+![platform](https://img.shields.io/badge/platform-macOS-blue) ![version](https://img.shields.io/badge/version-1.2.0-green)
 
 ## Highlights
 
