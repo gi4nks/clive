@@ -2,7 +2,6 @@ name: Build Clive for macOS
 
 on:
   push:
-    branches: [main]
     tags: ['v*']
   workflow_dispatch:
 

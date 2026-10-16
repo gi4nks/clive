@@ -3,6 +3,12 @@
 All notable changes to Clive are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows SemVer, with the version defined once in `tauri.conf.json` (build.rs enforces Cargo/package parity). Releases are tagged `vX.Y.Z` (annotated).
 
+## [Unreleased]
+### Added
+- Semantic release command derives major, minor, or patch versions from Conventional Commits and updates all manifests together
+### Changed
+- Renamed the visible sidebar label and related actions to Navigator (Navigatore in Italian)
+
 ## [1.1.2] - 2026-10-16
 ### Added
 - AI master switch in Settings to hide and disable AI actions across Clive

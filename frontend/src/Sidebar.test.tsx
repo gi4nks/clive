@@ -35,7 +35,7 @@ const dt = (types: string[], payload: unknown) => ({
 describe('Sidebar', () => {
   it('collapsed renders a thin rail with an expand control', () => {
     render(<Sidebar {...base} open={false} />)
-    const btn = screen.getByLabelText('Espandi barra')
+    const btn = screen.getByLabelText('Espandi navigatore')
     fireEvent.click(btn)
     expect(base.onToggle).toHaveBeenCalled()
   })
@@ -63,7 +63,7 @@ describe('Sidebar', () => {
 
   it('add button triggers the picker, unpin removes', () => {
     render(<Sidebar {...base} />)
-    fireEvent.click(screen.getByLabelText('Aggiungi alla barra'))
+    fireEvent.click(screen.getByLabelText('Aggiungi al navigatore'))
     expect(base.onAdd).toHaveBeenCalled()
     fireEvent.click(screen.getAllByLabelText('Rimuovi')[0])
     expect(base.onUnpin).toHaveBeenCalled()

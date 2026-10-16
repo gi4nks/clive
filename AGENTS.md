@@ -32,10 +32,12 @@ Never commit provider keys, personal paths, or machine-specific identifiers. Use
 
 ## Recent Changes
 
+- Added a Conventional Commit-based SemVer release command (`make release-check`, `make release`) that updates all manifest versions, changelog, README badge, and annotated tag. Gitea remains canonical; publish a filtered snapshot and matching version tag to GitHub without `.gitea`.
+- Renamed the visible sidebar label to Navigator (Navigatore in Italian), including pinning, sizing, and keyboard shortcut labels.
 - Added a global AI switch in Settings that disables AI behavior and hides its buttons and context-menu actions throughout the interface. See `openspec/specs/ai-feature-toggle/spec.md`.
 - Added an expanded preview mode: both file panes reduce to their path rails and the preview fills the remaining workspace; restoring the layout preserves each pane's prior collapsed state.
 - Centralized the Apple Silicon DMG pipeline through `gitea-ci` v1.0.4; Clive retains its Wise submodule and `make setup`/`make build` commands while shared steps install the toolchain, verify the DMG, and upload the artifact.
 - Flattened the Tauri app to the repository root, moved the Vite app to `frontend/`, and pinned `@gi4nks/wise` as a local `file:` dependency backed by the `vendor/wise` Git submodule. `make setup` initializes and builds the submodule before installing the frontend.
 - Added read-only Get Info for one file or folder from the main toolbar and file context menu. Folder details report recursive file size and direct child count; symbolic links are not followed. ZIP members and multi-selections do not offer this action. See `openspec/specs/context-menu/spec.md` and `openspec/specs/fs-commands/spec.md`.
-- Added Finder-compatible colored tags backed by macOS file metadata, bulk Edit Tags from the context menu and the always-visible sidebar, current-folder tag filtering, and an empty state. The sidebar prevents horizontal scrolling. Tag writes pass through Rust and honor mounted-volume and system-location guards. See `openspec/specs/file-tags/spec.md`.
+- Added Finder-compatible colored tags backed by macOS file metadata, bulk Edit Tags from the context menu and the always-visible Navigator, current-folder tag filtering, and an empty state. The Navigator prevents horizontal scrolling. Tag writes pass through Rust and honor mounted-volume and system-location guards. See `openspec/specs/file-tags/spec.md`.
 - Suppressed the WebView's native context menu across the app so right-clicking blank areas no longer exposes Reload; Clive's supported context menus remain active. See `openspec/specs/context-menu/spec.md`.

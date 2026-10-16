@@ -1,4 +1,4 @@
-.PHONY: all setup submodules wise-install wise-build frontend-install frontend-dev frontend-build frontend-check frontend-test dev build check fmt clippy clean
+.PHONY: all setup submodules wise-install wise-build frontend-install frontend-dev frontend-build frontend-check frontend-test release-bootstrap release-check release dev build check fmt clippy clean
 
 WISE_DIR = vendor/wise
 FRONTEND_DIR = frontend
@@ -32,6 +32,15 @@ frontend-check:
 
 frontend-test:
 	NODE_OPTIONS=--no-experimental-webstorage npm --prefix $(FRONTEND_DIR) test
+
+release-bootstrap:
+	node scripts/release.mjs --bootstrap
+
+release-check:
+	node scripts/release.mjs --dry-run
+
+release:
+	node scripts/release.mjs --apply
 
 dev: wise-build
 	cargo tauri dev

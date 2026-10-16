@@ -11,7 +11,7 @@ summarize and chat — that always ask before touching your files and are undoab
 - **Dual pane** with resizable split, collapsible rails, per-pane history,
   focus mode (⌘\\), swap and move-to-other-pane
 - **File operations**: trash with restore, batch rename with live pattern
-  preview, drag & drop transfers, pinned sidebar, mounted volumes with
+  preview, drag & drop transfers, pinned Navigator, mounted volumes with
   free/used and safe eject (incl. network mounts)
 - **Preview panel** for images, video, audio, PDF, markdown, text — expandable
   across the workspace while preserving the saved pane layout — plus
@@ -20,7 +20,7 @@ summarize and chat — that always ask before touching your files and are undoab
   OpenAI-compatible provider can be added from Settings; cloud usage is opt-in;
   every mutation goes through a validated plan + undo journal; a Settings
   switch hides and disables all AI entry points across the app
-- **Finder-compatible colored tags** with sidebar filtering and bulk editing
+- **Finder-compatible colored tags** with Navigator filtering and bulk editing
 - Native **macOS look**: vibrancy, overlay titlebar, sheets, ⌘/ shortcut map
 
 ## Getting started
@@ -55,11 +55,46 @@ entered in **Settings → AI**; shell env vars take priority.
 
 ## Versioning & releases
 
-SemVer, defined once in `tauri.conf.json` (`build.rs` fails the build on
-drift with `Cargo.toml`/`package.json`). Releases are tagged `vX.Y.Z`; the
-`About` section in Settings shows version, build date, and git commit.
+Clive follows SemVer (`MAJOR.MINOR.PATCH`). `tauri.conf.json` is the version
+source; `build.rs` checks it against Cargo and frontend manifests. Conventional
+Commits determine the next version:
 
-GitHub and the local Gitea instance use separate publishing histories and
-workflow configuration. GitHub builds are published from a filtered snapshot;
-local Gitea configuration and `.gitea` workflows are not part of the GitHub
-repository.
+- `feat:` → minor release
+- `fix:`, `perf:`, or `revert:` → patch release
+- `!` after the type/scope or a `BREAKING CHANGE:` footer → major release
+- `docs:`, `chore:`, `test:`, and other non-feature commits do not trigger a
+  release by themselves
+
+After committing the current release state, initialize the local Gitea tag
+baseline once if it has no SemVer tags, then push that tag to Gitea:
+
+```sh
+make release-bootstrap
+git push origin "$(git describe --tags --exact-match HEAD)"
+```
+
+For each subsequent release, keep the worktree clean and preview the decision:
+
+```sh
+make release-check
+```
+
+The command reads commits since the latest `vX.Y.Z` tag. Add curated notes
+under `[Unreleased]` in `CHANGELOG.md`; applying a release updates the Tauri,
+Cargo, npm, lockfile, and README badge versions, promotes those notes, commits
+the release, and creates an annotated tag:
+
+```sh
+make release
+```
+
+`make release` does not push. Review the generated commit and tag, then push
+both to Gitea. Its existing workflow builds the DMG from version tags. To
+publish the same version on GitHub, update GitHub from a filtered source
+snapshot and push the matching tag there; GitHub keeps its own history and
+`.github` workflow, while Gitea keeps `.gitea` and its local configuration.
+The GitHub DMG workflow runs on version tags (or manual dispatch), so pushing
+the snapshot to `main` does not create a duplicate release build. The two
+repositories use the same `vX.Y.Z` label on their respective release commits.
+
+The `About` section in Settings shows version, build date, and git commit.
