@@ -5,6 +5,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning fol
 
 ## [Unreleased]
 
+## [1.2.1] - 2026-10-16
 ### Fixed
 - Ad-hoc sign the GitHub macOS app bundle and verify its signature and DMG during CI
 
