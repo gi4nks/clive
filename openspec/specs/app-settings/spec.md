@@ -1,7 +1,7 @@
 # app-settings Specification
 
 ## Purpose
-Defines a single application settings surface: a tabbed Settings modal and one persisted config object that is the source of truth for language, theme, file-appearance defaults, AI defaults, and import/export.
+Defines a single application settings surface: a tabbed Settings modal and one persisted config object that is the source of truth for language, theme, file-appearance defaults, AI defaults and availability, and import/export.
 
 ## Requirements
 
@@ -53,6 +53,12 @@ The system SHALL let the user set defaults for view mode, sort, hidden-file visi
 
 ### Requirement: AI settings live here
 The system SHALL manage the default AI provider, default model, gateway health, and a cloud-enable toggle within the AI section.
+
+The AI section SHALL provide a persisted master switch for all AI features. When disabled, AI requests and plans SHALL not run, and AI entry points in the status bar, chat, context menus, activity/debug surfaces, and plan review SHALL be hidden. Disabling AI during a request SHALL cancel it and close AI surfaces. Provider configuration SHALL remain available in Settings so AI can be re-enabled. See `ai-feature-toggle` for the full behavior contract.
+
+#### Scenario: Disable AI features
+- **WHEN** the user disables AI features in Settings
+- **THEN** AI controls disappear, active requests are cancelled, and subsequent requests are blocked until re-enabled
 
 #### Scenario: Pick default model
 - **WHEN** the user chooses a provider and a model

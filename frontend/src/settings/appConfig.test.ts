@@ -48,6 +48,7 @@ describe('normalizeConfig', () => {
     expect(n.language).toBe('it')
     expect(Array.isArray(n.recents)).toBe(true)
     expect(n.sort).toEqual(DEFAULT_CONFIG.sort)
+    expect(n.ai.enabled).toBe(true)
   })
   it('merges partial ai without dropping the rest', () => {
     const n = normalizeConfig({ ai: { provider: 'ollama' } as never })

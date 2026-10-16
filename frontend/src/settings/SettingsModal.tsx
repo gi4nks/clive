@@ -97,6 +97,9 @@ function AiTab({ health, models, onChanged }: { health: AiHealth | null; models:
 
   return (
     <div className="flex h-full flex-col gap-2">
+      <Row label={t('settings.aiEnabled')}>
+        <input type="checkbox" className="toggle toggle-sm" aria-label={t('settings.aiEnabled')} checked={cfg.ai.enabled} onChange={(e) => set({ ai: { enabled: e.target.checked } })} />
+      </Row>
       <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)] gap-3">
         <div className="flex min-h-0 flex-col gap-1 overflow-y-auto pr-1">
           {selectable.map((p) => (

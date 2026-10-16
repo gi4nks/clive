@@ -4,6 +4,7 @@ import { useChat } from './useChat.js'
 import { CANCELLED_SENTINEL } from './chat.js'
 import * as runtime from './runtime.js'
 import * as fsBridge from './fs.js'
+import { setAppConfig } from '../settings/appConfig.js'
 vi.mock('./reviewProposal.js', () => ({ reviewProposal: vi.fn(async () => true) }))
 
 vi.mock('./runtime.js', () => ({
@@ -33,6 +34,7 @@ function streamTrash(file: string) {
 }
 
 beforeEach(() => {
+  setAppConfig({ ai: { enabled: true } })
   vi.mocked(runtime.streamChat).mockReset()
   vi.mocked(fsBridge.fs.rename).mockClear()
   vi.mocked(fsBridge.fs.move).mockClear()
@@ -51,6 +53,14 @@ describe('useChat', () => {
     guardOn: true,
     setStatus: vi.fn(),
     refresh: vi.fn(),
+  })
+
+  it('does not start a chat when the AI master switch is disabled', async () => {
+    setAppConfig({ ai: { enabled: false } })
+    const { result } = renderHook(() => useChat(deps()))
+    await act(async () => { await result.current.send('hello') })
+    expect(runtime.streamChat).not.toHaveBeenCalled()
+    expect(result.current.messages).toHaveLength(0)
   })
 
   it('appends user msg, streams assistant chunks, finalizes with actions parsed', async () => {

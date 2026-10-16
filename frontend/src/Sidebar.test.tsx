@@ -21,6 +21,8 @@ const base = {
   onUnpin: vi.fn(),
   onReorder: vi.fn(),
   onAdd: vi.fn(),
+  canEditTags: true,
+  onEditTags: vi.fn(),
   onRemoveRemote: vi.fn(),
   onRemoteError: vi.fn(),
   onRowContext: vi.fn(),
@@ -45,6 +47,18 @@ describe('Sidebar', () => {
     expect(base.onOpenItem).toHaveBeenCalledWith('/home/u/Documents')
     fireEvent.click(screen.getByText('Projects')) // a pinned folder
     expect(base.onOpenItem).toHaveBeenCalledWith('/home/u/Projects')
+  })
+
+  it('always shows Tags and opens the editor from the sidebar', () => {
+    render(<Sidebar {...base} />)
+    expect(screen.getByText('Tag')).toBeInTheDocument()
+    fireEvent.click(screen.getByLabelText('Modifica i tag degli elementi selezionati'))
+    expect(base.onEditTags).toHaveBeenCalled()
+  })
+
+  it('prevents horizontal scrolling in the sidebar', () => {
+    render(<Sidebar {...base} />)
+    expect(screen.getByRole('navigation')).toHaveClass('overflow-x-hidden')
   })
 
   it('add button triggers the picker, unpin removes', () => {

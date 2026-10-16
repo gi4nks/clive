@@ -3,6 +3,140 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
 
+const FINDER_TAG_XATTR: &str = "com.apple.metadata:_kMDItemUserTags";
+const XATTR_NOFOLLOW: i32 = 0x0001;
+
+#[derive(Debug, Serialize, Clone, serde::Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct FileTag {
+    pub name: String,
+    /// Finder color index: 0 none, 1 gray, 2 green, 3 purple, 4 blue,
+    /// 5 yellow, 6 red, 7 orange.
+    pub color: u8,
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FileTagsUpdate {
+    pub path: String,
+    pub tags: Vec<FileTag>,
+}
+
+#[cfg(target_os = "macos")]
+fn read_finder_tags(path: &Path) -> Result<Vec<FileTag>, String> {
+    use std::{ffi::CString, os::unix::ffi::OsStrExt};
+    let path_c = CString::new(path.as_os_str().as_bytes()).map_err(|e| e.to_string())?;
+    let name = CString::new(FINDER_TAG_XATTR).unwrap();
+    let size = unsafe {
+        getxattr(path_c.as_ptr(), name.as_ptr(), std::ptr::null_mut(), 0, 0, XATTR_NOFOLLOW)
+    };
+    if size < 0 {
+        let err = std::io::Error::last_os_error();
+        if err.raw_os_error() == Some(93) {
+            return Ok(Vec::new());
+        }
+        return Err(err.to_string());
+    }
+    let mut data = vec![0u8; size as usize];
+    let read = unsafe {
+        getxattr(
+            path_c.as_ptr(),
+            name.as_ptr(),
+            data.as_mut_ptr().cast(),
+            data.len(),
+            0,
+            XATTR_NOFOLLOW,
+        )
+    };
+    if read < 0 {
+        return Err(std::io::Error::last_os_error().to_string());
+    }
+    data.truncate(read as usize);
+    let values: Vec<String> = plist::from_bytes(&data).map_err(|e| e.to_string())?;
+    Ok(values
+        .into_iter()
+        .filter_map(|value| {
+            let (name, color) = value
+                .rsplit_once('\n')
+                .map(|(n, c)| (n, c.parse::<u8>().unwrap_or(0)))
+                .unwrap_or((&value, 0));
+            (!name.is_empty()).then(|| FileTag {
+                name: name.to_string(),
+                color: color.min(7),
+            })
+        })
+        .collect())
+}
+
+#[cfg(not(target_os = "macos"))]
+fn read_finder_tags(_path: &Path) -> Result<Vec<FileTag>, String> {
+    Ok(Vec::new())
+}
+
+#[cfg(target_os = "macos")]
+fn write_finder_tags(path: &Path, tags: &[FileTag]) -> Result<(), String> {
+    use std::{ffi::CString, os::unix::ffi::OsStrExt};
+    let path_c = CString::new(path.as_os_str().as_bytes()).map_err(|e| e.to_string())?;
+    let name = CString::new(FINDER_TAG_XATTR).unwrap();
+    if tags.is_empty() {
+        let result = unsafe { removexattr(path_c.as_ptr(), name.as_ptr(), XATTR_NOFOLLOW) };
+        if result < 0 {
+            let err = std::io::Error::last_os_error();
+            if err.raw_os_error() != Some(93) {
+                return Err(err.to_string());
+            }
+        }
+        return Ok(());
+    }
+    let values: Vec<String> = tags
+        .iter()
+        .map(|tag| format!("{}\n{}", tag.name.trim(), tag.color.min(7)))
+        .collect();
+    let mut data = Vec::new();
+    plist::to_writer_binary(&mut data, &values).map_err(|e| e.to_string())?;
+    let result = unsafe {
+        setxattr(
+            path_c.as_ptr(),
+            name.as_ptr(),
+            data.as_ptr().cast(),
+            data.len(),
+            0,
+            XATTR_NOFOLLOW,
+        )
+    };
+    if result < 0 {
+        return Err(std::io::Error::last_os_error().to_string());
+    }
+    Ok(())
+}
+
+#[cfg(not(target_os = "macos"))]
+fn write_finder_tags(_path: &Path, _tags: &[FileTag]) -> Result<(), String> {
+    Err("Finder tags are only supported on macOS".into())
+}
+
+#[cfg(target_os = "macos")]
+#[link(name = "c")]
+extern "C" {
+    fn getxattr(
+        path: *const std::ffi::c_char,
+        name: *const std::ffi::c_char,
+        value: *mut std::ffi::c_void,
+        size: usize,
+        position: u32,
+        options: i32,
+    ) -> isize;
+    fn setxattr(
+        path: *const std::ffi::c_char,
+        name: *const std::ffi::c_char,
+        value: *const std::ffi::c_void,
+        size: usize,
+        position: u32,
+        options: i32,
+    ) -> i32;
+    fn removexattr(path: *const std::ffi::c_char, name: *const std::ffi::c_char, options: i32) -> i32;
+}
+
 #[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct FileEntry {
@@ -12,6 +146,7 @@ pub struct FileEntry {
     pub size: u64,
     pub modified: u64,
     pub extension: Option<String>,
+    pub tags: Vec<FileTag>,
 }
 
 #[derive(Debug, Serialize)]
@@ -142,6 +277,7 @@ pub fn list_dir(path: String, show_hidden: Option<bool>) -> Result<Vec<FileEntry
                 .map(|d| d.as_secs())
                 .unwrap_or(0),
             extension: p.extension().map(|e| e.to_string_lossy().into_owned()),
+            tags: read_finder_tags(&p).unwrap_or_default(),
         });
     }
 
@@ -152,6 +288,76 @@ pub fn list_dir(path: String, show_hidden: Option<bool>) -> Result<Vec<FileEntry
     });
 
     Ok(entries)
+}
+
+#[tauri::command]
+pub fn get_file_tags(paths: Vec<String>) -> Result<Vec<(String, Vec<FileTag>)>, String> {
+    paths.into_iter().map(|path| {
+        let p = normalize(&path);
+        require_mounted_path(&p).map_err(|e| e.to_string())?;
+        if !p.exists() {
+            return Err(format!("File does not exist: {}", p.display()));
+        }
+        Ok((path, read_finder_tags(&p)?))
+    }).collect()
+}
+
+#[tauri::command]
+pub fn set_files_tags(updates: Vec<FileTagsUpdate>, allow_system: bool) -> Result<(), String> {
+    let mut prepared = Vec::with_capacity(updates.len());
+    for update in updates {
+        let path = normalize(&update.path);
+        require_mounted_path(&path).map_err(|e| e.to_string())?;
+        if !path.exists() {
+            return Err(format!("File does not exist: {}", path.display()));
+        }
+        if !allow_system && is_protected(&path) {
+            return Err(protected_err(&path));
+        }
+        let mut tags: Vec<FileTag> = Vec::new();
+        for tag in update.tags {
+            let name = tag.name.trim();
+            if name.is_empty() { continue; }
+            if name.contains('\n') || name.contains('\r') {
+                return Err("invalid-tag-name".into());
+            }
+            if let Some(existing) = tags
+                .iter_mut()
+                .find(|current| current.name.eq_ignore_ascii_case(name))
+            {
+                existing.color = tag.color.min(7);
+            } else {
+                tags.push(FileTag {
+                    name: name.to_string(),
+                    color: tag.color.min(7),
+                });
+            }
+        }
+        let previous = read_finder_tags(&path)?;
+        prepared.push((path, tags, previous));
+    }
+    for index in 0..prepared.len() {
+        let (path, tags, _) = &prepared[index];
+        if let Err(error) = write_finder_tags(path, tags) {
+            let rollback_errors: Vec<String> = prepared[..index]
+                .iter()
+                .rev()
+                .filter_map(|(path, _, previous)| {
+                    write_finder_tags(path, previous)
+                        .err()
+                        .map(|e| format!("{}: {e}", path.display()))
+                })
+                .collect();
+            if rollback_errors.is_empty() {
+                return Err(error);
+            }
+            return Err(format!(
+                "{error}; rollback failed for {}",
+                rollback_errors.join(", ")
+            ));
+        }
+    }
+    Ok(())
 }
 
 #[tauri::command]

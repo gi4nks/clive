@@ -122,7 +122,10 @@
     "offline": "Offline",
     "checking": "Checking availability",
     "removeRemote": "Remove remote folder",
-    "disconnectRemote": "Disconnect volume"
+    "disconnectRemote": "Disconnect volume",
+    "tags": "Tags",
+    "noTags": "No tags in this folder",
+    "editTags": "Edit tags for selected items"
   },
   "disk": {
     "title": "Disk",
@@ -190,7 +193,22 @@
     "unpin": "Unpin from Sidebar",
     "systemTag": "system",
     "multiRename": "Rename with pattern…",
-    "info": "Get Info"
+    "info": "Get Info",
+    "editTags": "Edit Tags…"
+  },
+  "tags": {
+    "title": "Edit Tags",
+    "items_one": "Apply tags to {{count}} item",
+    "items_other": "Apply tags to {{count}} items",
+    "newPlaceholder": "New tag name",
+    "add": "Add",
+    "apply": "Save tags",
+    "empty": "No tags yet",
+    "saved": "Tags updated",
+    "invalid": "Tag names can’t contain line breaks",
+    "itemTags": "Tags: {{tags}}",
+    "color": "Tag color",
+    "colors": { "1": "Gray", "2": "Green", "3": "Purple", "4": "Blue", "5": "Yellow", "6": "Red", "7": "Orange" }
   },
   "fileInfo": {
     "title": "Item Information",
@@ -413,6 +431,7 @@
     "defaultProvider": "Default provider",
     "defaultModel": "Default model",
     "allowCloud": "Allow cloud providers",
+    "aiEnabled": "Enable AI features",
     "sidebarWidth": "Sidebar width",
     "export": "Export",
     "import": "Import",

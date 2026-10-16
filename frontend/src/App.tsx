@@ -68,6 +68,7 @@ import { pinPath, unpinPath, reorderPinned } from './pinned'
 import { useTranslation } from 'react-i18next'
 import i18n from './i18n'
 import { getCurrentWindow } from '@tauri-apps/api/window'
+import { TagEditor } from './TagEditor'
 
 function Modal({
   title,
@@ -231,6 +232,8 @@ export default function App() {
     | { x: number; y: number; kind: 'place' | 'recent'; label: string; path: string }
     | { x: number; y: number; kind: 'sidebar'; label: string; path: string; fixed: boolean }
   const [contextMenu, setContextMenu] = useState<CtxMenu | null>(null)
+  const [tagEditorPaths, setTagEditorPaths] = useState<string[] | null>(null)
+  const [selectedTag, setSelectedTag] = useState<{ pane: PaneId; name: string } | null>(null)
   const [fileInfoPath, setFileInfoPath] = useState<string | null>(null)
 
   // --- per-pane browse state (dual-pane) ---
@@ -527,18 +530,6 @@ export default function App() {
     }
   }, [setCfg, refreshPane])
 
-  // Keep BOTH panes fresh on a timer (skip a pane while its own list is loading).
-  useEffect(() => {
-    const timer = setInterval(() => {
-      const ps = panesRef.current
-      for (const id of ['left', 'right'] as PaneId[]) {
-        const p = ps[id]
-        if (p.path && !p.loading) void refreshPane(id, p.path)
-      }
-    }, 2000)
-    return () => clearInterval(timer)
-  }, [refreshPane])
-
   // ---- per-pane sorted + search-filtered view ----
   const sortEntries = useCallback(
     (list: FileEntry[]) => {
@@ -560,9 +551,12 @@ export default function App() {
       const p = panes[id]
       const s = sortEntries(p.entries)
       const q = p.query.trim().toLowerCase()
-      return q ? s.filter((e) => e.name.toLowerCase().includes(q)) : s
+      const searched = q ? s.filter((e) => e.name.toLowerCase().includes(q)) : s
+      return selectedTag?.pane === id
+        ? searched.filter((e) => e.tags?.some((tag) => tag.name === selectedTag.name))
+        : searched
     },
-    [panes, sortEntries],
+    [panes, sortEntries, selectedTag],
   )
 
   const sortedEntries = useMemo(() => sortEntries(entries), [entries, sortEntries]) // active
@@ -657,6 +651,7 @@ export default function App() {
   )
 
   const chat = useChat({
+    enabled: cfg.ai.enabled,
     currentPath,
     entries: visibleEntries,
     selected: selectedEntries,
@@ -669,12 +664,20 @@ export default function App() {
 
   // --- AI Plan (Task 6): App owns the pipeline; ChatDrawer only forwards 🪄. ---
   const aiPlan = useAiPlanCoordinator({
+    enabled: cfg.ai.enabled,
     entries,
     currentPath,
     guardOn: cfg.guardSystemLocations,
     model: fullModelId(ai.sel),
   })
   const { plan, createPlan: handleCreatePlan, cancelCreatePlan, planBusy, planNotice, planElapsed, canPlan } = aiPlan
+
+  useEffect(() => {
+    if (cfg.ai.enabled) return
+    setChatOpen(false)
+    setActivityOpen(false)
+    setDebugModalOpen(false)
+  }, [cfg.ai.enabled])
 
   // Keep the chat context available while the plan is generated. PlanPanel is
   // rendered above the drawer, so the user can still see the source answer
@@ -996,6 +999,7 @@ export default function App() {
       if (!multi && !isArchivePath(file.path)) {
         items.push({ key: 'fileInfo', label: i18n.t('menu.info'), icon: mi('M12 11v5M12 7h.01M22 12a10 10 0 1 1-20 0 10 10 0 0 1 20 0Z'), onSelect: () => setFileInfoPath(file.path) })
       }
+      if (!paths.some(isArchivePath)) items.push({ key: 'tags', label: i18n.t('menu.editTags'), icon: mi('M20 13 11 22 2 13V2h11l7 7v4Z'), onSelect: () => setTagEditorPaths(paths) })
 
       const archiveCtx = splitArchivePath(file.path)
       const isZipFile = !file.isDir && /\.zip$/i.test(file.name)
@@ -1081,9 +1085,11 @@ export default function App() {
 
       items.push({ key: 'sep3', separator: true, label: '' })
 
-      items.push({ key: 'airename', label: i18n.t('menu.aiRename'), icon: mi('M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2 2M16 16l2 2M18 6l-2 2M8 16l-2 2'), onSelect: () => ai.requestRename(selectedEntries) })
-      items.push({ key: 'aiorganize', label: i18n.t('menu.aiOrganize'), icon: mi('M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z'), onSelect: () => ai.requestOrganize(selectedEntries) })
-      items.push({ key: 'aisummary', label: i18n.t('menu.aiSummarize'), icon: mi('M8 8h8M8 12h8M8 16h5'), onSelect: () => ai.requestSummarize(selectedEntries) })
+      if (cfg.ai.enabled) {
+        items.push({ key: 'airename', label: i18n.t('menu.aiRename'), icon: mi('M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2 2M16 16l2 2M18 6l-2 2M8 16l-2 2'), onSelect: () => ai.requestRename(selectedEntries) })
+        items.push({ key: 'aiorganize', label: i18n.t('menu.aiOrganize'), icon: mi('M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z'), onSelect: () => ai.requestOrganize(selectedEntries) })
+        items.push({ key: 'aisummary', label: i18n.t('menu.aiSummarize'), icon: mi('M8 8h8M8 12h8M8 16h5'), onSelect: () => ai.requestSummarize(selectedEntries) })
+      }
 
       // Cestino
       items.push({
@@ -1098,7 +1104,7 @@ export default function App() {
 
       return items
     },
-    [navigate, handleSetStatus, handleCopyCut, handlePaste, clip.paths.length, setRenamingPath, requestDelete, setTransferReq, setFileInfoPath, ai, selectedEntries, pinned, setPinned, cfg.guardSystemLocations],
+    [navigate, handleSetStatus, handleCopyCut, handlePaste, clip.paths.length, setRenamingPath, requestDelete, setTransferReq, setFileInfoPath, ai, selectedEntries, pinned, setPinned, cfg.guardSystemLocations, cfg.ai.enabled],
   )
 
   const buildSidebarItems = useCallback(
@@ -1223,6 +1229,7 @@ export default function App() {
     setStatus: handleSetStatus,
     actionsFor,
     ai,
+    aiEnabled: cfg.ai.enabled,
   }
 
   const handleSortChange = useCallback((key: SortKey) => {
@@ -1298,6 +1305,7 @@ export default function App() {
       }
       if (meta && e.shiftKey && lower === 'c') {
         e.preventDefault()
+        if (!getAppConfig().ai.enabled) return
         return setChatOpen((o) => !o)
       }
       if (meta && lower === 'c' && selected.size) {
@@ -1455,7 +1463,10 @@ export default function App() {
   }, [contextMenu, targetPaths, buildContextItems, buildSidebarItems])
 
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-base-100 text-base-content">
+    <div
+      className="flex h-full min-h-0 flex-col overflow-hidden bg-base-100 text-base-content"
+      onContextMenuCapture={(event) => event.preventDefault()}
+    >
       <div
         data-tauri-drag-region
         onPointerDown={(e) => {
@@ -1615,6 +1626,13 @@ export default function App() {
           home={home}
           pinned={pinned}
           remoteLocations={remoteLocations}
+          tags={[...new Map(panes[active].entries.flatMap((entry) => (entry.tags ?? []).map((tag) => [tag.name.toLocaleLowerCase(), tag] as const))).values()].sort((a, b) => a.name.localeCompare(b.name))}
+          selectedTag={selectedTag?.pane === active ? selectedTag.name : null}
+          canEditTags={[...selected].some((path) => !isArchivePath(path))}
+          onEditTags={() => {
+            const paths = [...selected].filter((path) => !isArchivePath(path))
+            if (paths.length) setTagEditorPaths(paths)
+          }}
           width={cfg.sidebarWidth}
           onToggle={() => setSidebarOpen(!sidebarOpen)}
           onOpenItem={(p) => void openSidebarItem(p)}
@@ -1625,6 +1643,11 @@ export default function App() {
           onAdd={() => setSidebarAdd({ value: '' })}
           onRemoveRemote={removeRemoteLocation}
           onRemoteError={(message) => handleSetStatus(message, 'error')}
+          onSelectTag={(tag) => {
+            setSelectedTag((current) => current?.pane === active && current.name === tag ? null : tag ? { pane: active, name: tag } : null)
+            setSearchQuery('')
+            patch(active, (p) => ({ ...p, selected: new Set(), anchorPath: null }))
+          }}
           onRowContext={openSidebarContext}
         />
         {sidebarOpen && (
@@ -1704,6 +1727,11 @@ export default function App() {
         <StatusBar ctx={widgetCtx} chatOpen={chatOpen} onChat={() => setChatOpen((o) => !o)} />
       <ShortcutsModal open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
       <ConfirmDialog />
+      {tagEditorPaths && <TagEditor paths={tagEditorPaths} onClose={() => setTagEditorPaths(null)} onApplied={() => {
+        setTagEditorPaths(null)
+        void Promise.all([refreshPane('left', panesRef.current.left.path), refreshPane('right', panesRef.current.right.path)])
+        handleSetStatus(i18n.t('tags.saved'), 'success', 2500)
+      }} />}
       {extractTo && (
         <div className="modal modal-open z-[92]" role="dialog" aria-modal="true" aria-label={t('archive.extractTo')}>
           <div className="modal-box w-full max-w-md rounded-2xl p-0 shadow-2xl">
@@ -1738,7 +1766,7 @@ export default function App() {
           void ai.runMultiRename(renames)
         }}
       />
-      <AiWorkspace
+      {cfg.ai.enabled && <AiWorkspace
         ai={ai}
         chat={chat}
         chatOpen={chatOpen}
@@ -1756,8 +1784,8 @@ export default function App() {
         planElapsed={planElapsed}
         onOpenDebug={() => setDebugModalOpen(true)}
         onOpenActivity={() => setActivityOpen(true)}
-      />
-      <AiActivityCenter
+      />}
+      {cfg.ai.enabled && <AiActivityCenter
         open={activityOpen}
         onClose={() => setActivityOpen(false)}
         onOpenTechnical={() => {
@@ -1768,10 +1796,10 @@ export default function App() {
         planElapsed={planElapsed}
         planPhase={planNotice?.kind === 'error' ? 'error' : planBusy ? 'stream' : plan.phase}
         planNotice={planNotice?.message}
-      />
-      <AiDebugModal open={debugModalOpen} onClose={() => setDebugModalOpen(false)} />
-      <PlanPanel ctrl={plan} onClose={plan.close} />
-      {lastBatchId && (
+      />}
+      {cfg.ai.enabled && <AiDebugModal open={debugModalOpen} onClose={() => setDebugModalOpen(false)} />}
+      {cfg.ai.enabled && <PlanPanel ctrl={plan} onClose={plan.close} />}
+      {cfg.ai.enabled && lastBatchId && (
         <div className="fixed bottom-12 left-1/2 z-50 flex -translate-x-1/2 items-center gap-2 rounded-lg border border-base-300 bg-base-200 px-3 py-1.5 text-xs shadow-lg">
           <span>{t('plan.lastBatch')}</span>
           <button className="btn btn-primary btn-xs" onClick={() => void undoLastBatch()}>
@@ -1900,7 +1928,7 @@ export default function App() {
         />
       )}
 
-      {planBusy && (
+      {cfg.ai.enabled && planBusy && (
         <div className="fixed inset-x-0 top-4 z-[70] flex justify-center px-4" role="status" aria-live="polite">
           <div className="alert alert-info max-w-lg justify-between gap-4 shadow-lg">
             <span className="flex min-w-0 items-center gap-2 break-words">
@@ -1914,7 +1942,7 @@ export default function App() {
         </div>
       )}
 
-      {planNotice && (
+      {cfg.ai.enabled && planNotice && (
         <div className="fixed inset-x-0 top-4 z-[75] flex justify-center px-4" role="alert">
           <div
             className={`alert alert-soft max-w-lg justify-between gap-4 shadow-lg ${

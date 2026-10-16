@@ -49,6 +49,16 @@ const openAiTab = () => {
 }
 
 describe('Settings AI master-detail', () => {
+  it('persists the master switch while keeping provider settings available', async () => {
+    openAiTab()
+    const toggle = screen.getByRole('checkbox', { name: 'Enable AI features' })
+    fireEvent.click(toggle)
+    expect((await import('./appConfig')).getAppConfig().ai.enabled).toBe(false)
+    expect(screen.getByTestId('ai-provider-detail')).toBeInTheDocument()
+    fireEvent.click(toggle)
+    expect((await import('./appConfig')).getAppConfig().ai.enabled).toBe(true)
+  })
+
   it('shows a single detail panel and switches it on provider selection', async () => {
     openAiTab()
     await waitFor(() => expect(screen.getByTestId('ai-provider-detail')).toBeInTheDocument())

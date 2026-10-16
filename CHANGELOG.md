@@ -3,6 +3,13 @@
 All notable changes to Clive are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows SemVer, with the version defined once in `tauri.conf.json` (build.rs enforces Cargo/package parity). Releases are tagged `vX.Y.Z` (annotated).
 
+## [1.1.2] - 2026-10-16
+### Added
+- AI master switch in Settings to hide and disable AI actions across Clive
+- Finder-compatible colored tags, bulk editing, and sidebar filtering
+### Changed
+- Suppressed the WebView native context menu while preserving Clive's supported menus
+
 ## [1.1.1] - 2026-10-11
 ### Added
 - Expandable preview mode that preserves the saved collapsed state of each file pane when restoring the layout

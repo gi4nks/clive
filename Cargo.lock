@@ -398,11 +398,12 @@ dependencies = [
 
 [[package]]
 name = "clive"
-version = "1.1.1"
+version = "1.1.2"
 dependencies = [
  "axum",
  "dotenvy",
  "futures-util",
+ "plist",
  "reqwest 0.12.28",
  "serde",
  "serde_json",

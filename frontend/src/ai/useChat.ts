@@ -4,7 +4,7 @@
  * `runtime.streamChat` and to the filesystem via the `fs.ts` bridge. Nothing
  * the model proposes executes until the user confirms a specific action card.
  */
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { FileEntry } from '../api.js'
 import { budgetFiles, renderBudgeted, renderDirListing } from './budget.js'
 import { buildChatPrompt, extractActions, validateChatAction, CANCELLED_SENTINEL, type ChatMessage } from './chat.js'
@@ -17,8 +17,10 @@ import { proposalFromChatActions } from './proposal.js'
 import { useAiProposal } from './useAiProposal.js'
 import { snapshotContext, type AiContextSnapshot } from './context.js'
 import type { LocationDescriptor } from '../location.js'
+import { getAppConfig } from '../settings/appConfig.js'
 
 export interface UseChatDeps {
+  enabled?: boolean
   currentPath: string
   entries: FileEntry[]
   selected: FileEntry[]
@@ -74,8 +76,13 @@ export function useChat(deps: UseChatDeps) {
     setHistoryTruncated(false)
   }, [])
 
+  useEffect(() => {
+    if (deps.enabled === false) abortRef.current?.abort()
+  }, [deps.enabled])
+
   const send = useCallback(
     async (text: string, extraFiles: FileEntry[] = []) => {
+      if (depsRef.current.enabled === false || !getAppConfig().ai.enabled) return
       if (!text.trim() || streamingRef.current) return
       streamingRef.current = true
       setError('')
@@ -173,6 +180,7 @@ export function useChat(deps: UseChatDeps) {
 
   const applyAction = useCallback(
     async (msgIdx: number, actIdx: number) => {
+      if (depsRef.current.enabled === false || !getAppConfig().ai.enabled) return
       const key = `${msgIdx}:${actIdx}`
       if (inFlightActions.current.has(key)) return
       const d = depsRef.current

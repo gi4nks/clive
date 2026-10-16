@@ -6,6 +6,7 @@ import type { FileEntry } from '../api.js'
  * listing/configuration and receives a stable workflow surface; lifecycle,
  * cancellation and review/apply state remain local to this module. */
 export function useAiPlanCoordinator(args: {
+  enabled?: boolean
   entries: FileEntry[]
   currentPath: string
   guardOn: boolean

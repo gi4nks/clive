@@ -8,7 +8,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { FileEntry } from '../api'
 import i18n from '../i18n'
-import { useAppConfig } from '../settings/appConfig'
+import { getAppConfig, useAppConfig } from '../settings/appConfig'
 import { checkHealth, listAvailableModels, type AiHealth, type ModelOption } from './runtime'
 import { fullModelId, isCloudProvider, refreshProviders, useProviderRegistry } from './settings'
 import {
@@ -66,6 +66,9 @@ export function useAi(deps: AiDeps) {
   const [journal, setJournal] = useState<InverseOp[] | null>(null)
   const [error, setError] = useState('')
   const abortRef = useRef<AbortController | null>(null)
+  useEffect(() => {
+    if (!cfg.ai.enabled) abortRef.current?.abort()
+  }, [cfg.ai.enabled])
   const proposalContextRef = useRef<ReturnType<typeof snapshotContext> | null>(null)
   const currentContext = () => snapshotContext({
     rootPath: depsRef.current.currentPath,
@@ -153,6 +156,7 @@ export function useAi(deps: AiDeps) {
   }, [providers, health, models, cfg.ai.provider, cfg.ai.model, cfg.ai.cloudOptIn])
 
   const run = async (mode: AiKind, fn: (signal: AbortSignal) => Promise<void>) => {
+    if (!getAppConfig().ai.enabled) return
     const ctrl = new AbortController()
     abortRef.current = ctrl
     setBusy(mode)

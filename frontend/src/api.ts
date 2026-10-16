@@ -15,7 +15,10 @@ export interface FileEntry {
   size: number
   modified: number
   extension: string | null
+  tags?: FileTag[]
 }
+
+export interface FileTag { name: string; color: number }
 
 export interface FileInfo {
   name: string
@@ -44,6 +47,8 @@ export const listDir = (path: string, showHidden?: boolean) =>
   invoke<FileEntry[]>('list_dir', { path, showHidden })
 export const homeDir = () => invoke<string>('home_dir')
 export const fileInfo = (path: string) => invoke<FileInfo>('file_info', { path })
+export const getFileTags = (paths: string[]) => invoke<[string, FileTag[]][]>('get_file_tags', { paths })
+export const setFilesTags = (updates: { path: string; tags: FileTag[] }[]) => invoke<void>('set_files_tags', { updates, allowSystem: allowSystem() })
 export const copyFile = (src: string, dst: string) => invoke<void>('copy_file', { src, dst, allowSystem: allowSystem() })
 export const moveFile = (src: string, dst: string) => invoke<void>('move_file', { src, dst, allowSystem: allowSystem() })
 export const rename = (path: string, newName: string) =>

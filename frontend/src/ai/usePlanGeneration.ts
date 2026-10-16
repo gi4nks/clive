@@ -5,8 +5,10 @@ import type { Plan } from './plan.js'
 import i18n from '../i18n'
 import { describeAiError } from './execution.js'
 import { addDebugEvent } from './usePlanDebug.js'
+import { getAppConfig } from '../settings/appConfig.js'
 
 interface PlanGenerationArgs {
+  enabled?: boolean
   entries: FileEntry[]
   currentPath: string
   guardOn: boolean
@@ -35,7 +37,12 @@ export function usePlanGeneration(args: PlanGenerationArgs) {
 
   useEffect(() => () => abortRef.current?.abort(), [])
 
+  useEffect(() => {
+    if (args.enabled === false) abortRef.current?.abort()
+  }, [args.enabled])
+
   const start = useCallback(async (text: string) => {
+    if (args.enabled === false || !getAppConfig().ai.enabled) return
     if (busy || args.entries.length > PLAN_MAX_ENTRIES) return
     const controller = new AbortController()
     abortRef.current = controller
@@ -69,5 +76,5 @@ export function usePlanGeneration(args: PlanGenerationArgs) {
   const cancel = useCallback(() => abortRef.current?.abort(), [])
   const dismissNotice = useCallback(() => setNotice(null), [])
 
-  return { busy, notice, elapsed, start, cancel, dismissNotice, canPlan: args.entries.length <= PLAN_MAX_ENTRIES }
+  return { busy, notice, elapsed, start, cancel, dismissNotice, canPlan: args.enabled !== false && args.entries.length <= PLAN_MAX_ENTRIES }
 }

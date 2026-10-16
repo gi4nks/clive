@@ -1,4 +1,4 @@
-import { useEffect, useState, type DragEvent, type MouseEvent as ReactMouseEvent } from 'react'
+import { useState, type DragEvent, type MouseEvent as ReactMouseEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import { MAX_PINNED, pinnedLabel, placesFor } from './pinned'
 import type { RemoteLocation } from './settings/appConfig'
@@ -6,12 +6,17 @@ import { connectSmb, disconnectVolume, formatSize, listDir, revealInFinder } fro
 import { ContextMenu, type MenuItem } from './ContextMenu'
 import { useVolumes } from './volumes'
 import { confirmAsk } from './confirm'
+import type { FileTag } from './api'
+import { TagDot } from './TagEditor'
 
 interface Props {
   open: boolean
   home: string
   pinned: string[]
   remoteLocations: RemoteLocation[]
+  tags?: FileTag[]
+  selectedTag?: string | null
+  canEditTags?: boolean
   width?: number
   onToggle: () => void
   onOpenItem: (path: string) => void
@@ -22,6 +27,8 @@ interface Props {
   onAdd: () => void
   onRemoveRemote: (id: string) => void
   onRemoteError: (message: string) => void
+  onSelectTag?: (tag: string | null) => void
+  onEditTags?: () => void
   onRowContext: (e: ReactMouseEvent, info: { path: string; label: string; fixed: boolean }) => void
 }
 
@@ -38,6 +45,8 @@ const parseDrop = (e: DragEvent): string[] | null => {
 
 export function Sidebar(props: Props) {
   const { t } = useTranslation()
+  const tags = props.tags ?? []
+  const selectedTag = props.selectedTag ?? null
   const [dragOverRow, setDragOverRow] = useState<string | null>(null)
   const [remoteStatus, setRemoteStatus] = useState<Record<string, 'online' | 'offline' | 'connecting'>>({})
   const [remoteBusy, setRemoteBusy] = useState<string | null>(null)
@@ -45,18 +54,6 @@ export function Sidebar(props: Props) {
   const [menu, setMenu] = useState<{ x: number; y: number; items: MenuItem[] } | null>(null)
   const openMenu = (e: ReactMouseEvent) => { e.preventDefault(); e.stopPropagation(); return { x: e.clientX, y: e.clientY } }
   const places = placesFor(props.home)
-
-  useEffect(() => {
-    let cancelled = false
-    for (const remote of props.remoteLocations) {
-      void listDir(remote.path).then(() => {
-        if (!cancelled) setRemoteStatus((s) => ({ ...s, [remote.id]: 'online' }))
-      }).catch(() => {
-        if (!cancelled) setRemoteStatus((s) => ({ ...s, [remote.id]: 'offline' }))
-      })
-    }
-    return () => { cancelled = true }
-  }, [props.remoteLocations])
 
   if (!props.open) {
     // Collapsed rail: a thin strip with just an expand affordance.
@@ -151,7 +148,7 @@ export function Sidebar(props: Props) {
         }
       }}
       style={{ width: props.width ?? 176 }}
-      className="relative flex shrink-0 flex-col overflow-y-auto border-r border-base-300 bg-base-200/60 text-sm"
+      className="relative flex shrink-0 flex-col overflow-x-hidden overflow-y-auto border-r border-base-300 bg-base-200/60 text-sm"
     >
       <div className="flex shrink-0 items-center justify-between px-2 py-1.5">
         <span className="text-[10px] font-semibold uppercase tracking-wide opacity-60">{t('sidebar.title')}</span>
@@ -167,7 +164,7 @@ export function Sidebar(props: Props) {
         </div>
       </div>
 
-      <ul className="menu menu-sm w-full rounded-none bg-transparent p-1">
+      <ul className="menu menu-sm min-w-0 w-full rounded-none bg-transparent p-1">
         <li className="menu-title px-2 text-[10px] uppercase opacity-60">{t('sidebar.places')}</li>
         {places.map((pl) => (
           <Row key={pl.path} path={pl.path} label={t(`places.${pl.labelKey}`)} fixed />
@@ -177,6 +174,25 @@ export function Sidebar(props: Props) {
           <Row key={p} path={p} label={pinnedLabel(p)} />
         ))}
         {props.pinned.length >= MAX_PINNED && <li className="px-2 py-1 text-[10px] opacity-50">{t('sidebar.maxReached')}</li>}
+        <li className="relative mt-2 !flex !w-full !items-center !justify-start px-2 py-1 text-left text-[10px] font-semibold uppercase tracking-wide opacity-60">
+          <span>{t('sidebar.tags')}</span>
+          <button
+            type="button"
+            data-bar-control
+            className="tooltip tooltip-right btn btn-ghost btn-xs absolute right-2 top-1/2 !h-5 !min-h-0 -translate-y-1/2 px-1.5 text-sm normal-case opacity-100"
+            aria-label={t('sidebar.editTags')}
+            title={t('sidebar.editTags')}
+            data-tip={t('sidebar.editTags')}
+            disabled={!props.canEditTags}
+            onClick={props.onEditTags}
+          >＋</button>
+        </li>
+        {tags.length === 0 && <li className="px-2 py-1 text-xs leading-snug opacity-50">{t('sidebar.noTags')}</li>}
+        {tags.map((tag) => <li key={tag.name.toLocaleLowerCase()}>
+          <button data-bar-control className={`flex w-full items-center gap-2 text-left ${selectedTag === tag.name ? 'active' : ''}`} aria-pressed={selectedTag === tag.name} onClick={() => props.onSelectTag?.(selectedTag === tag.name ? null : tag.name)}>
+            <TagDot color={tag.color} /><span className="truncate">{tag.name}</span>
+          </button>
+        </li>)}
         {props.remoteLocations.length > 0 && <li className="menu-title mt-3 px-2 text-[10px] uppercase opacity-60">{t('sidebar.remote')}</li>}
         {props.remoteLocations.map((remote) => {
           const status = remoteStatus[remote.id]

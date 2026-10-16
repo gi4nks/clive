@@ -13,6 +13,14 @@ The system SHALL open a context menu at the pointer location when the user right
 - **THEN** a context menu opens near the cursor
 - **AND** if it would extend past a screen edge it is flipped or shifted to remain fully visible
 
+### Requirement: Suppress the native WebView context menu
+The system SHALL suppress the browser's native context menu throughout the app, including on areas without a Clive context menu.
+
+#### Scenario: Right-click an empty app area
+- **WHEN** the user right-clicks an area without a Clive context menu
+- **THEN** the WebView's native menu, including Reload, does not appear
+- **AND** existing Clive context menus continue to open on supported items
+
 #### Scenario: Menu closes on dismissal
 - **WHEN** the user clicks outside, presses Escape, blurs the window, or scrolls
 - **THEN** the context menu closes

@@ -26,7 +26,7 @@ export const WIDGETS: Widget[] = [
     Component: ClipboardChipWidget,
     visible: (c) => c.clip.paths.length > 0 || c.pasteInFlight,
   },
-  { id: 'ai', placement: 'right', order: 0, Component: AiWidget },
+  { id: 'ai', placement: 'right', order: 0, Component: AiWidget, visible: (c) => c.aiEnabled },
   { id: 'trash', placement: 'right', order: 1, Component: TrashWidget, collapsible: true },
   { id: 'disk', placement: 'right', order: 2, Component: DiskWidget, collapsible: true },
   { id: 'calendar-date', placement: 'right', order: 3, Component: CalendarWidget, collapsible: true },

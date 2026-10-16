@@ -44,6 +44,7 @@ export interface AppConfig {
   home: string
   recents: string[]
   ai: {
+    enabled: boolean
     provider: string
     model: string
     cloudOptIn: boolean
@@ -69,7 +70,7 @@ export const DEFAULT_CONFIG: AppConfig = {
   recents: [],
   // No shipped provider/model: empty means "auto-select the first online
   // provider" (resolved by the AI layer against the gateway registry).
-  ai: { provider: '', model: '', cloudOptIn: true },
+  ai: { enabled: true, provider: '', model: '', cloudOptIn: true },
 }
 
 const LS_KEY = 'fm.config'
@@ -136,6 +137,7 @@ function seedFromLegacy(): AppConfig {
     home: localStorage.getItem('fm.home') ?? DEFAULT_CONFIG.home,
     hiddenVisible: localStorage.getItem('fm.hidden') === '1',
     ai: {
+      enabled: DEFAULT_CONFIG.ai.enabled,
       provider: readJSON<{ provider?: string }>('fm.ai.settings', {}).provider ?? DEFAULT_CONFIG.ai.provider,
       model: readJSON<{ model?: string }>('fm.ai.settings', {}).model ?? DEFAULT_CONFIG.ai.model,
       cloudOptIn: DEFAULT_CONFIG.ai.cloudOptIn,

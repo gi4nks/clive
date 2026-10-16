@@ -121,7 +121,10 @@
     "offline": "Offline",
     "checking": "Verifica disponibilità",
     "removeRemote": "Rimuovi cartella remota",
-    "disconnectRemote": "Disconnetti volume"
+    "disconnectRemote": "Disconnetti volume",
+    "tags": "Tag",
+    "noTags": "Nessun tag in questa cartella",
+    "editTags": "Modifica i tag degli elementi selezionati"
   },
   "disk": {
     "title": "Disco",
@@ -189,7 +192,22 @@
     "unpin": "Rimuovi dalla barra",
     "systemTag": "sistema",
     "multiRename": "Rinomina con pattern…",
-    "info": "Ottieni informazioni"
+    "info": "Ottieni informazioni",
+    "editTags": "Modifica tag…"
+  },
+  "tags": {
+    "title": "Modifica tag",
+    "items_one": "Applica tag a {{count}} elemento",
+    "items_other": "Applica tag a {{count}} elementi",
+    "newPlaceholder": "Nome del nuovo tag",
+    "add": "Aggiungi",
+    "apply": "Salva tag",
+    "empty": "Nessun tag",
+    "saved": "Tag aggiornati",
+    "invalid": "I nomi dei tag non possono contenere interruzioni di riga",
+    "itemTags": "Tag: {{tags}}",
+    "color": "Colore del tag",
+    "colors": { "1": "Grigio", "2": "Verde", "3": "Viola", "4": "Blu", "5": "Giallo", "6": "Rosso", "7": "Arancione" }
   },
   "fileInfo": {
     "title": "Informazioni elemento",
@@ -412,6 +430,7 @@
     "defaultProvider": "Provider di default",
     "defaultModel": "Modello di default",
     "allowCloud": "Consenti provider cloud",
+    "aiEnabled": "Attiva funzionalità AI",
     "sidebarWidth": "Larghezza barra laterale",
     "export": "Esporta",
     "import": "Importa",

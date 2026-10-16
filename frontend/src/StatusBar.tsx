@@ -60,7 +60,7 @@ export function StatusBar({ ctx, chatOpen = false, onChat }: { ctx: WidgetCtx; c
 
       {/* right */}
       <div className="flex shrink-0 items-center gap-0.5">
-        {onChat && (
+        {onChat && ctx.aiEnabled && (
           <button
             data-bar-control
             className={`tooltip tooltip-top btn btn-ghost btn-xs !min-h-0 h-5 px-1 leading-none ${chatOpen ? 'btn-active' : ''}`}

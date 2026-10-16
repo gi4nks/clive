@@ -29,6 +29,7 @@ export interface WidgetCtx {
   setStatus: (msg: string, kind: 'success' | 'error' | 'info') => void
   actionsFor: (target: FileEntry | FileEntry[]) => MenuItem[]
   ai: AiController
+  aiEnabled: boolean
 }
 
 export interface Widget {

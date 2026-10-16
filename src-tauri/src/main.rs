@@ -49,6 +49,8 @@ fn main() {
             commands::filesystem::list_dir,
             commands::filesystem::home_dir,
             commands::filesystem::file_info,
+            commands::filesystem::get_file_tags,
+            commands::filesystem::set_files_tags,
             commands::filesystem::copy_file,
             commands::filesystem::move_file,
             commands::filesystem::rename,

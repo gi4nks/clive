@@ -281,6 +281,9 @@ export function FileList({
                     <div className="scale-[1.5]"><FileIcon entry={file} /></div>
                   </div>
                   <span className="max-w-full truncate text-center text-xs font-medium leading-tight">{file.name}</span>
+                  {file.tags?.length ? <span className="flex h-2.5 items-center gap-1" aria-label={t('tags.itemTags', { tags: file.tags.map((tag) => tag.name).join(', ') })}>
+                    {file.tags.slice(0, 4).map((tag) => <span key={tag.name} title={tag.name} className="inline-block h-1.5 w-1.5 rounded-full" style={{ backgroundColor: ({ 1: '#8e8e93', 2: '#34c759', 3: '#af52de', 4: '#007aff', 5: '#ffcc00', 6: '#ff3b30', 7: '#ff9500' } as Record<number, string>)[tag.color] ?? '#8e8e93' }} />)}
+                  </span> : null}
                   <span className="text-[10px] text-base-content/60">
                     {file.isDir ? t('fileList.folder') : formatSize(file.size)}
                   </span>
@@ -356,7 +359,7 @@ export function FileList({
                     onCancel={onRenameCancel}
                   />
                 ) : (
-                  <span className="truncate text-[13px] font-medium">{file.name}</span>
+                  <span className="flex min-w-0 items-center gap-2"><span className="truncate text-[13px] font-medium">{file.name}</span>{file.tags?.slice(0, 3).map((tag) => <span key={tag.name} className="inline-flex shrink-0 items-center" title={tag.name}><span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: ({ 1: '#8e8e93', 2: '#34c759', 3: '#af52de', 4: '#007aff', 5: '#ffcc00', 6: '#ff3b30', 7: '#ff9500' } as Record<number, string>)[tag.color] ?? '#8e8e93' }} /></span>)}</span>
                 )}
               </div>
               {file.isDir ? (
