@@ -36,7 +36,12 @@ make build     # release bundle in target/release/bundle
 GitHub Actions builds the Apple Silicon DMG for version tags (`vX.Y.Z`). The
 app is ad-hoc signed so macOS does not label the downloaded package damaged.
 Since it is not signed with a Developer ID certificate or notarized, macOS
-may still ask you to approve it in **System Settings → Privacy & Security**.
+may show “Apple could not verify ‘Clive’ is free of malware.” To approve it,
+first try to open Clive and dismiss the warning, then go to **System Settings
+→ Privacy & Security**, scroll to **Security**, and click **Open Anyway** next
+to Clive. Confirm **Open** in the next prompt. You can also Control-click
+Clive in Finder, choose **Open**, then confirm **Open**. Only approve the copy
+downloaded from Clive’s official GitHub Actions build.
 Download the `Clive-macOS-Apple-Silicon` artifact from the workflow run in the
 repository's **Actions** tab.
 
