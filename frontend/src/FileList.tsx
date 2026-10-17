@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { formatDate, formatSize, kindOf, type FileEntry } from './api'
 import { ChildCountBadge } from './ChildCountBadge'
 import { FileIcon } from './FileIcon'
+import { loadNativeIcons } from './nativeFileIcons'
 import { getAppConfig, useAppConfig } from './settings/appConfig'
 import { isArchivePath } from './archivePath'
 import { clampWidth, fitColWidths, COL_MIN, COL_MAX } from './resize'
@@ -108,6 +109,10 @@ export function FileList({
   const [dropHover, setDropHover] = useState<string | null>(null)
   const { name: wName, size: wSize } = cfg.colWidths[paneId]
   const listRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    void loadNativeIcons(files)
+  }, [files])
   const [avail, setAvail] = useState(0)
   useEffect(() => {
     const el = listRef.current

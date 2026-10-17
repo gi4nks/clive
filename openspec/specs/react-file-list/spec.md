@@ -8,6 +8,22 @@ Allows users to browse and select files in the File Manager interface with multi
 ### Requirement: File list displays files with name, size, and kind
 The system SHALL display a list of files with their name, size, and file kind/kype.
 
+### Requirement: File list uses native macOS file icons
+On macOS, the system SHALL display each file and folder's icon supplied by
+macOS, including the icon associated with its type or default application.
+Icon loading SHALL happen after the file list is visible and SHALL be cached
+for unchanged entries. If the native icon is unavailable, the system SHALL
+display its built-in type icon.
+
+#### Scenario: Native icons load for a directory listing
+- **WHEN** the file list contains files or folders on macOS
+- **THEN** Clive requests their icons from macOS in batches and replaces the
+  built-in icons as results arrive
+
+#### Scenario: Native icon is unavailable
+- **WHEN** a native icon cannot be loaded for an entry
+- **THEN** the built-in type icon remains visible
+
 #### Scenario: File list renders correctly
 - **WHEN** the file list component mounts with a non-empty file array
 - **THEN** each file is displayed with its name, size, and kind visible

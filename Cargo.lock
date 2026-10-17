@@ -401,8 +401,12 @@ name = "clive"
 version = "1.2.1"
 dependencies = [
  "axum",
+ "base64 0.22.1",
  "dotenvy",
  "futures-util",
+ "objc2",
+ "objc2-app-kit",
+ "objc2-foundation",
  "plist",
  "reqwest 0.12.28",
  "serde",

@@ -1,5 +1,6 @@
-import type { ReactNode } from 'react'
+import { useSyncExternalStore, type ReactNode } from 'react'
 import type { FileEntry } from './api'
+import { nativeIconFor, nativeIconsVersion, subscribeNativeIcons } from './nativeFileIcons'
 
 type Kind =
   | 'folder' | 'home' | 'desktop' | 'documents' | 'downloads' | 'pictures' | 'music' | 'movies'
@@ -114,7 +115,16 @@ function glyph(kind: Kind): ReactNode {
 }
 
 export function FileIcon({ entry }: { entry: FileEntry }) {
+  useSyncExternalStore(subscribeNativeIcons, nativeIconsVersion, nativeIconsVersion)
   const kind = kindOf(entry)
+  const nativeIcon = nativeIconFor(entry)
+  if (nativeIcon) {
+    return (
+      <div className="flex h-8 w-8 shrink-0 items-center justify-center">
+        <img src={nativeIcon} className="h-7 w-7 object-contain" role="img" aria-label={kind} draggable={false} />
+      </div>
+    )
+  }
   const color = PALETTE[kind]
   return (
     <div className="flex h-8 w-8 shrink-0 items-center justify-center">

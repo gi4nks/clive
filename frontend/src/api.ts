@@ -45,6 +45,8 @@ export interface DiskSpace {
 
 export const listDir = (path: string, showHidden?: boolean) =>
   invoke<FileEntry[]>('list_dir', { path, showHidden })
+export interface NativeFileIcon { path: string; dataUrl: string }
+export const getFileIcons = (paths: string[]) => invoke<NativeFileIcon[]>('file_icons', { paths })
 export const homeDir = () => invoke<string>('home_dir')
 export const fileInfo = (path: string) => invoke<FileInfo>('file_info', { path })
 export const getFileTags = (paths: string[]) => invoke<[string, FileTag[]][]>('get_file_tags', { paths })

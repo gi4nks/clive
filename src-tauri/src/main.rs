@@ -47,6 +47,7 @@ fn main() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::filesystem::list_dir,
+            commands::filesystem::file_icons,
             commands::filesystem::home_dir,
             commands::filesystem::file_info,
             commands::filesystem::get_file_tags,

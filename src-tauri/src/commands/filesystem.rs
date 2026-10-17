@@ -162,6 +162,81 @@ pub struct FileInfo {
     pub child_count: Option<u64>,
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NativeFileIcon {
+    pub path: String,
+    pub data_url: String,
+}
+
+#[cfg(target_os = "macos")]
+fn native_file_icon(path: &str) -> Option<String> {
+    use base64::Engine;
+    use objc2_app_kit::{
+        NSBitmapImageFileType, NSBitmapImageRep, NSBitmapImageRepPropertyKey, NSWorkspace,
+    };
+    use objc2_foundation::{NSDictionary, NSString};
+    use std::{ffi::CString, ptr::NonNull};
+
+    let c_path = CString::new(path).ok()?;
+    let ns_path = unsafe {
+        NSString::stringWithUTF8String(
+            NonNull::new(c_path.as_ptr() as *mut _).expect("CString pointer is non-null"),
+        )
+    }?;
+    let image = NSWorkspace::sharedWorkspace().iconForFile(&ns_path);
+    let tiff = image.TIFFRepresentation()?;
+    let bitmap = NSBitmapImageRep::imageRepWithData(&tiff)?;
+    let properties = NSDictionary::<NSBitmapImageRepPropertyKey, objc2::runtime::AnyObject>::new();
+    let png = unsafe {
+        bitmap.representationUsingType_properties(NSBitmapImageFileType::PNG, &properties)
+    }?;
+    let mut bytes = vec![0; png.length() as usize];
+    if bytes.is_empty() {
+        return None;
+    }
+    unsafe {
+        png.getBytes_length(
+            NonNull::new(bytes.as_mut_ptr().cast()).expect("Vec pointer is non-null"),
+            bytes.len(),
+        );
+    }
+    Some(format!(
+        "data:image/png;base64,{}",
+        base64::engine::general_purpose::STANDARD.encode(bytes)
+    ))
+}
+
+#[cfg(not(target_os = "macos"))]
+fn native_file_icon(_path: &str) -> Option<String> {
+    None
+}
+
+#[tauri::command]
+pub async fn file_icons(
+    app: tauri::AppHandle,
+    paths: Vec<String>,
+) -> Result<Vec<NativeFileIcon>, String> {
+    if paths.len() > 512 {
+        return Err("Too many file icon requests".into());
+    }
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    app.run_on_main_thread(move || {
+        let icons = paths
+            .into_iter()
+            .filter_map(|path| {
+                if !Path::new(&path).exists() {
+                    return None;
+                }
+                native_file_icon(&path).map(|data_url| NativeFileIcon { path, data_url })
+            })
+            .collect::<Vec<_>>();
+        let _ = tx.send(icons);
+    })
+    .map_err(|e| e.to_string())?;
+    rx.await.map_err(|e| e.to_string())
+}
+
 pub(crate) fn normalize(path: &str) -> PathBuf {
     let trimmed = path.trim();
     if trimmed == "~" || trimmed.starts_with("~/") {
