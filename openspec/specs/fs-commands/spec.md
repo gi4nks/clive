@@ -43,6 +43,32 @@ The system SHALL expose a `disk_space(path)` command returning total, free, and 
 - **WHEN** the path or device name contains spaces or is unusually long
 - **THEN** the command still resolves a single, correct usage entry
 
+### Requirement: Filesystem writes reject disconnected volume paths
+Filesystem mutations and metadata operations under `/Volumes/<name>` SHALL verify that the mount is present before touching the path. A missing mount path SHALL NOT be recreated on the boot volume.
+
+#### Scenario: A volume is disconnected
+- **WHEN** an operation targets a path under an unmounted `/Volumes/<name>`
+- **THEN** the command returns a not-connected error
+- **AND** it does not create or modify the mount directory on the boot volume
+
+### Requirement: Disconnect only mounted network volumes
+The `disconnect_volume(path)` command SHALL accept only a visible, currently mounted network volume whose mount point is a direct child of `/Volumes`.
+
+#### Scenario: Disconnect an SMB volume
+- **WHEN** the path identifies a listed mounted network volume directly under `/Volumes`
+- **THEN** Clive requests that macOS unmount that volume
+
+#### Scenario: Reject local, hidden, nested, or unmounted paths
+- **WHEN** the path does not identify a listed mounted network volume directly under `/Volumes`
+- **THEN** the command returns an error without invoking `diskutil`
+
+### Requirement: Validate volume paths before eject or disconnect
+Volume paths SHALL reject traversal, nested mount paths, hidden names, and control characters before invoking macOS volume tools.
+
+#### Scenario: Invalid volume path
+- **WHEN** a path contains traversal, a nested component, a hidden name, or a control character
+- **THEN** the command returns an error without invoking `diskutil`
+
 ### Requirement: open_terminal launches Terminal at a path
 The system SHALL expose an `open_terminal(path)` command that opens Terminal.app at the given directory and reports failure as an error.
 

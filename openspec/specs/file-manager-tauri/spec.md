@@ -41,6 +41,11 @@ The system SHALL copy a file to a destination and copy a directory recursively, 
 - **WHEN** `copy_file` is invoked with a source directory
 - **THEN** the directory tree is recursively copied to the destination
 
+#### Scenario: Copy a symbolic link
+- **WHEN** `copy_file` encounters a symbolic link in a file or directory tree
+- **THEN** it copies the link itself without following its target
+- **AND** a link to an ancestor cannot cause recursive traversal
+
 #### Scenario: Missing source is rejected
 - **WHEN** the source path does not exist
 - **THEN** the command returns a not-found error
@@ -56,6 +61,22 @@ The system SHALL move an item to a destination, falling back to copy-then-delete
 - **WHEN** a direct rename fails (for example across volumes)
 - **THEN** the item is copied to the destination and removed from the source
 
+#### Scenario: Cross-device move refuses an occupied destination
+- **WHEN** the destination path already exists and direct rename fails
+- **THEN** the move returns an error without replacing the destination
+- **AND** the source remains unchanged
+
+#### Scenario: Cross-device copy fails part way through
+- **WHEN** copying fails after creating part of the destination
+- **THEN** Clive attempts to remove the partial destination
+- **AND** the source remains available
+- **AND** if cleanup also fails, the error reports that the partial destination remains
+
+#### Scenario: Source removal fails after cross-device copy
+- **WHEN** the copy succeeds but removing the source fails
+- **THEN** Clive attempts to roll back the destination copy
+- **AND** reports cleanup failure if rollback also fails
+
 ### Requirement: Rename with validation
 The system SHALL rename an item within its parent directory, rejecting invalid or colliding names.
 
@@ -70,6 +91,10 @@ The system SHALL rename an item within its parent directory, rejecting invalid o
 #### Scenario: Collision
 - **WHEN** the target name already exists in the parent directory
 - **THEN** the command returns an error and leaves the original unchanged
+
+#### Scenario: Unicode filename
+- **WHEN** a valid name contains Unicode characters
+- **THEN** copy and rename preserve the name without loss
 
 ### Requirement: Create a folder
 The system SHALL create a new folder inside a given parent directory and return its path.

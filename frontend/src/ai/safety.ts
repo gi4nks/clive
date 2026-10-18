@@ -114,18 +114,3 @@ export function validateRenames(
   }
   return out
 }
-
-export type InverseOp =
-  | { kind: 'rename'; path: string; restoreName: string }
-  | { kind: 'move'; from: string; to: string }
-  | { kind: 'create-folder'; path: string }
-
-/** Inverse of an applied rename: rename `path` (its NEW path) back to `previousName`. */
-export function undoRename(newPath: string, previousName: string): InverseOp {
-  return { kind: 'rename', path: newPath, restoreName: previousName }
-}
-
-/** Inverse of an applied move: move the item back from its new to its old path. */
-export function undoMove(movedTo: string, movedFrom: string): InverseOp {
-  return { kind: 'move', from: movedTo, to: movedFrom }
-}

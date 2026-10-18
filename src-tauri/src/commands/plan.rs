@@ -3,9 +3,11 @@ use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use tauri::Emitter;
 
-use crate::commands::filesystem::{is_protected, move_path, normalize, protected_err};
+use crate::commands::filesystem::path_safety::{is_protected, normalize, protected_err};
+use crate::commands::filesystem::transfers::move_path;
 use crate::commands::trash::{restore_target, trash_slot_dir, unique_in_dir};
 
 /// One operation as serialized by the TS client (Task 1 `PlanOp`).
@@ -16,6 +18,13 @@ pub enum PlanOpInput {
     CreateFolder {
         id: String,
         path: String,
+        included: bool,
+    },
+    #[serde(rename_all = "camelCase")]
+    CreateFile {
+        id: String,
+        path: String,
+        content: String,
         included: bool,
     },
     #[serde(rename_all = "camelCase")]
@@ -30,6 +39,8 @@ pub enum PlanOpInput {
         id: String,
         path: String,
         dest_dir: String,
+        #[serde(default)]
+        dest_name: Option<String>,
         included: bool,
     },
     #[serde(rename_all = "camelCase")]
@@ -53,6 +64,8 @@ pub enum Inverse {
     MoveBack { from: String, to: String },
     #[serde(rename_all = "camelCase")]
     RestoreFromTrash { slot: String, to: String },
+    #[serde(rename_all = "camelCase")]
+    RemoveFile { path: String, sha256: String },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -88,15 +101,27 @@ pub struct FailedOp {
 }
 
 fn error_code(error: &str) -> &'static str {
-    if error.contains("protected") { "protected" }
-    else if error.contains("target exists") { "target_exists" }
-    else if error.contains("destination folder missing") { "destination_missing" }
-    else if error.contains("invalid destination") { "invalid_destination" }
-    else if error.contains("invalid name") { "invalid_name" }
-    else if error.contains("trash directory") { "trash_location" }
-    else if error.contains("not empty") { "not_empty" }
-    else if error.contains("not in trash") { "trash_missing" }
-    else { "filesystem" }
+    if error.contains("protected") {
+        "protected"
+    } else if error.contains("target exists") {
+        "target_exists"
+    } else if error.contains("destination folder missing") {
+        "destination_missing"
+    } else if error.contains("invalid destination") {
+        "invalid_destination"
+    } else if error.contains("invalid name") {
+        "invalid_name"
+    } else if error.contains("trash directory") {
+        "trash_location"
+    } else if error.contains("not empty") {
+        "not_empty"
+    } else if error.contains("not in trash") {
+        "trash_missing"
+    } else if error.contains("file changed") {
+        "file_changed"
+    } else {
+        "filesystem"
+    }
 }
 
 fn now_secs() -> u64 {
@@ -124,7 +149,11 @@ fn journal_path(batch_id: &str) -> PathBuf {
 /// batchId maps directly onto a journal filename: reject anything that could
 /// escape the journal dir (traversal, absolute paths). Authoritative gate.
 fn validate_batch_id(batch_id: &str) -> Result<(), String> {
-    if batch_id.is_empty() || batch_id.contains('/') || batch_id.contains('\\') || batch_id.contains("..") {
+    if batch_id.is_empty()
+        || batch_id.contains('/')
+        || batch_id.contains('\\')
+        || batch_id.contains("..")
+    {
         return Err("invalid batchId".to_string());
     }
     Ok(())
@@ -146,6 +175,7 @@ fn write_journal(journal: &JournalFile) -> Result<(), String> {
 fn id_of(op: &PlanOpInput) -> &str {
     match op {
         PlanOpInput::CreateFolder { id, .. }
+        | PlanOpInput::CreateFile { id, .. }
         | PlanOpInput::Rename { id, .. }
         | PlanOpInput::Move { id, .. }
         | PlanOpInput::Trash { id, .. } => id,
@@ -155,6 +185,7 @@ fn id_of(op: &PlanOpInput) -> &str {
 fn included_of(op: &PlanOpInput) -> bool {
     match op {
         PlanOpInput::CreateFolder { included, .. }
+        | PlanOpInput::CreateFile { included, .. }
         | PlanOpInput::Rename { included, .. }
         | PlanOpInput::Move { included, .. }
         | PlanOpInput::Trash { included, .. } => *included,
@@ -164,6 +195,7 @@ fn included_of(op: &PlanOpInput) -> bool {
 fn path_of(op: &PlanOpInput) -> &str {
     match op {
         PlanOpInput::CreateFolder { path, .. }
+        | PlanOpInput::CreateFile { path, .. }
         | PlanOpInput::Rename { path, .. }
         | PlanOpInput::Move { path, .. }
         | PlanOpInput::Trash { path, .. } => path,
@@ -173,9 +205,10 @@ fn path_of(op: &PlanOpInput) -> &str {
 fn phase_rank(op: &PlanOpInput) -> u8 {
     match op {
         PlanOpInput::CreateFolder { .. } => 0,
-        PlanOpInput::Rename { .. } => 1,
-        PlanOpInput::Move { .. } => 2,
-        PlanOpInput::Trash { .. } => 3,
+        PlanOpInput::CreateFile { .. } => 1,
+        PlanOpInput::Rename { .. } => 2,
+        PlanOpInput::Move { .. } => 3,
+        PlanOpInput::Trash { .. } => 4,
     }
 }
 
@@ -207,7 +240,9 @@ fn is_ancestor_or_same(anc: &Path, p: &Path) -> bool {
 }
 
 fn run_op(op: &PlanOpInput, allow_system: bool) -> Outcome {
-    if let Err(e) = crate::commands::filesystem::require_mounted_path(&normalize(path_of(op))) {
+    if let Err(e) =
+        crate::commands::filesystem::path_safety::require_mounted_path(&normalize(path_of(op)))
+    {
         return Outcome::Failed(e.to_string());
     }
     match op {
@@ -234,8 +269,43 @@ fn run_op(op: &PlanOpInput, allow_system: bool) -> Outcome {
                 Err(e) => Outcome::Failed(e.to_string()),
             }
         }
+        PlanOpInput::CreateFile { path, content, .. } => {
+            let p = normalize(path);
+            if let Some(e) = guard_err(allow_system, &[&p]) {
+                return Outcome::Failed(e);
+            }
+            if p.file_name().is_none() || p.parent().is_none() {
+                return Outcome::Failed("invalid name".into());
+            }
+            if !p.parent().is_some_and(Path::is_dir) {
+                return Outcome::Failed("destination folder missing".into());
+            }
+            let mut file = match fs::OpenOptions::new().write(true).create_new(true).open(&p) {
+                Ok(file) => file,
+                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+                    return Outcome::Failed("target exists".into())
+                }
+                Err(e) => return Outcome::Failed(e.to_string()),
+            };
+            if let Err(e) = std::io::Write::write_all(&mut file, content.as_bytes())
+                .and_then(|()| file.sync_all())
+            {
+                drop(file);
+                let _ = fs::remove_file(&p);
+                return Outcome::Failed(e.to_string());
+            }
+            let sha256 = format!("{:x}", Sha256::digest(content.as_bytes()));
+            Outcome::Applied(Box::new(Inverse::RemoveFile {
+                path: p.to_string_lossy().into_owned(),
+                sha256,
+            }))
+        }
         PlanOpInput::Rename { path, new_name, .. } => {
-            if new_name.contains('/') || new_name.contains('\\') || new_name == "." || new_name == ".." {
+            if new_name.contains('/')
+                || new_name.contains('\\')
+                || new_name == "."
+                || new_name == ".."
+            {
                 return Outcome::Failed("invalid name".into());
             }
             let src = normalize(path);
@@ -263,13 +333,23 @@ fn run_op(op: &PlanOpInput, allow_system: bool) -> Outcome {
                 Err(e) => Outcome::Failed(e.to_string()),
             }
         }
-        PlanOpInput::Move { path, dest_dir, .. } => {
+        PlanOpInput::Move {
+            path,
+            dest_dir,
+            dest_name,
+            ..
+        } => {
             let src = normalize(path);
             let dest_dir = normalize(dest_dir);
-            let dst = src
-                .file_name()
-                .map(|n| dest_dir.join(n))
-                .unwrap_or_else(|| dest_dir.clone());
+            let name = dest_name
+                .as_deref()
+                .or_else(|| src.file_name().and_then(|n| n.to_str()));
+            let Some(name) = name.filter(|n| {
+                !n.is_empty() && *n != "." && *n != ".." && !n.contains('/') && !n.contains('\\')
+            }) else {
+                return Outcome::Failed("invalid name".into());
+            };
+            let dst = dest_dir.join(name);
             if let Some(e) = guard_err(allow_system, &[&src, &dest_dir, &dst]) {
                 return Outcome::Failed(e);
             }
@@ -363,9 +443,14 @@ fn apply_ops(
     };
     for op in ops.iter().filter(|op| included_of(op)) {
         let mut paths = vec![path_of(op)];
-        if let PlanOpInput::Move { dest_dir, .. } = op { paths.push(dest_dir); }
+        if let PlanOpInput::Move { dest_dir, .. } = op {
+            paths.push(dest_dir);
+        }
         for path in paths {
-            journal.mounts.insert(path.to_string(), crate::commands::filesystem::mount_identity(&normalize(path))?);
+            journal.mounts.insert(
+                path.to_string(),
+                crate::commands::filesystem::path_safety::mount_identity(&normalize(path))?,
+            );
         }
     }
     write_journal(&journal)?;
@@ -389,14 +474,23 @@ fn apply_ops(
         done += 1;
         let outcome = if included_of(op) {
             let changed = journal.mounts.iter().find_map(|(path, identity)| {
-                crate::commands::filesystem::verify_mount_identity(&normalize(path), identity).err()
+                crate::commands::filesystem::path_safety::verify_mount_identity(
+                    &normalize(path),
+                    identity,
+                )
+                .err()
             });
-            if let Some(error) = changed { Outcome::Failed(error) } else { run_op(op, allow_system) }
+            if let Some(error) = changed {
+                Outcome::Failed(error)
+            } else {
+                run_op(op, allow_system)
+            }
         } else {
             Outcome::Skipped
         };
         let phase = match op {
             PlanOpInput::CreateFolder { .. } => "createFolder",
+            PlanOpInput::CreateFile { .. } => "createFile",
             PlanOpInput::Rename { .. } => "rename",
             PlanOpInput::Move { .. } => "move",
             PlanOpInput::Trash { .. } => "trash",
@@ -409,7 +503,11 @@ fn apply_ops(
                 report.applied += 1;
             }
             Outcome::Skipped => report.skipped += 1,
-            Outcome::Failed(e) => report.failed.push(FailedOp { id: id.clone(), code: error_code(&e).into(), error: e }),
+            Outcome::Failed(e) => report.failed.push(FailedOp {
+                id: id.clone(),
+                code: error_code(&e).into(),
+                error: e,
+            }),
         }
         on_progress(done, total, &id);
     }
@@ -420,6 +518,7 @@ fn apply_ops(
 fn inverse_label(inv: &Inverse) -> String {
     match inv {
         Inverse::RemoveDir { path, .. } => path.clone(),
+        Inverse::RemoveFile { path, .. } => path.clone(),
         Inverse::RenameBack { path, .. } => path.clone(),
         Inverse::MoveBack { from, .. } => from.clone(),
         Inverse::RestoreFromTrash { slot, .. } => slot.clone(),
@@ -428,13 +527,15 @@ fn inverse_label(inv: &Inverse) -> String {
 
 fn run_inverse(inv: &Inverse, allow_system: bool) -> Outcome {
     let paths = match inv {
-        Inverse::RemoveDir { path, .. } => vec![path],
+        Inverse::RemoveDir { path, .. } | Inverse::RemoveFile { path, .. } => vec![path],
         Inverse::RenameBack { path, to } => vec![path, to],
         Inverse::MoveBack { from, to } => vec![from, to],
         Inverse::RestoreFromTrash { slot, to } => vec![slot, to],
     };
     for path in paths {
-        if let Err(e) = crate::commands::filesystem::require_mounted_path(&normalize(path)) {
+        if let Err(e) =
+            crate::commands::filesystem::path_safety::require_mounted_path(&normalize(path))
+        {
             return Outcome::Failed(e.to_string());
         }
     }
@@ -456,6 +557,31 @@ fn run_inverse(inv: &Inverse, allow_system: bool) -> Outcome {
             match fs::remove_dir(&p) {
                 Ok(()) => Outcome::Applied(Box::new(inv.clone())),
                 Err(_) => Outcome::Failed("not empty".into()),
+            }
+        }
+        Inverse::RemoveFile { path, sha256 } => {
+            let p = normalize(path);
+            if let Some(e) = guard_err(allow_system, &[&p]) {
+                return Outcome::Failed(e);
+            }
+            let metadata = match fs::symlink_metadata(&p) {
+                Ok(metadata) => metadata,
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Outcome::Skipped,
+                Err(e) => return Outcome::Failed(e.to_string()),
+            };
+            if !metadata.file_type().is_file() {
+                return Outcome::Failed("file changed since apply".into());
+            }
+            let bytes = match fs::read(&p) {
+                Ok(bytes) => bytes,
+                Err(e) => return Outcome::Failed(e.to_string()),
+            };
+            if format!("{:x}", Sha256::digest(&bytes)) != *sha256 {
+                return Outcome::Failed("file changed since apply".into());
+            }
+            match fs::remove_file(&p) {
+                Ok(()) => Outcome::Applied(Box::new(inv.clone())),
+                Err(e) => Outcome::Failed(e.to_string()),
             }
         }
         Inverse::RenameBack { path, to } => {
@@ -547,7 +673,10 @@ fn undo_ops(
 
     let total = journal.entries.len();
     for (path, identity) in &journal.mounts {
-        crate::commands::filesystem::verify_mount_identity(&normalize(path), identity)?;
+        crate::commands::filesystem::path_safety::verify_mount_identity(
+            &normalize(path),
+            identity,
+        )?;
     }
     let mut remaining = journal.clone();
     let mut report = ApplyReport {
@@ -601,13 +730,18 @@ pub async fn apply_plan(
     allow_system: bool,
 ) -> Result<ApplyReport, String> {
     tauri::async_runtime::spawn_blocking(move || {
-        apply_ops(&batch_id, &ops, allow_system, &mut |done, total, current_id| {
-            app.emit(
-                "plan-progress",
-                serde_json::json!({ "done": done, "total": total, "currentId": current_id }),
-            )
-            .ok();
-        })
+        apply_ops(
+            &batch_id,
+            &ops,
+            allow_system,
+            &mut |done, total, current_id| {
+                app.emit(
+                    "plan-progress",
+                    serde_json::json!({ "done": done, "total": total, "currentId": current_id }),
+                )
+                .ok();
+            },
+        )
     })
     .await
     .map_err(|e| format!("apply_plan worker failed: {e}"))?
@@ -652,17 +786,27 @@ mod tests {
         fs::create_dir(&folder).unwrap();
         let journal = JournalFile {
             mounts: std::collections::BTreeMap::new(),
-            version: 1, batch_id: "partial".into(), created_at: 0,
-            root_path: s(&base), entries: vec![
-                Inverse::RenameBack { path: "/System/blocked".into(), to: s(&base.join("target")) },
-                Inverse::RemoveDir { path: s(&folder), was_new: true },
+            version: 1,
+            batch_id: "partial".into(),
+            created_at: 0,
+            root_path: s(&base),
+            entries: vec![
+                Inverse::RenameBack {
+                    path: "/System/blocked".into(),
+                    to: s(&base.join("target")),
+                },
+                Inverse::RemoveDir {
+                    path: s(&folder),
+                    was_new: true,
+                },
             ],
         };
         write_journal(&journal).unwrap();
         let report = undo_ops("partial", false, &mut |_, _, _| {}).unwrap();
         assert_eq!(report.applied, 1);
         assert_eq!(report.failed.len(), 1);
-        let remaining: JournalFile = serde_json::from_str(&fs::read_to_string(journal_path("partial")).unwrap()).unwrap();
+        let remaining: JournalFile =
+            serde_json::from_str(&fs::read_to_string(journal_path("partial")).unwrap()).unwrap();
         assert_eq!(remaining.entries.len(), 1);
         assert!(!folder.exists());
         clear_env(&base);
@@ -670,10 +814,7 @@ mod tests {
 
     fn temp_base(tag: &str) -> PathBuf {
         let n = SEQ.fetch_add(1, Ordering::Relaxed);
-        let dir = std::env::temp_dir().join(format!(
-            "clive-plan-{tag}-{}-{n}",
-            std::process::id()
-        ));
+        let dir = std::env::temp_dir().join(format!("clive-plan-{tag}-{}-{n}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).unwrap();
         dir
@@ -707,15 +848,28 @@ mod tests {
         let r = s(&root);
         // deliberately out-of-order input: the engine must still execute phases
         let ops = vec![
-            PlanOpInput::Trash { id: "t1".into(), path: format!("{r}/sub"), included: true },
+            PlanOpInput::Trash {
+                id: "t1".into(),
+                path: format!("{r}/sub"),
+                included: true,
+            },
             PlanOpInput::Move {
                 id: "m1".into(),
                 path: format!("{r}/sub/b.txt"),
                 dest_dir: format!("{r}/X/Y"),
+                dest_name: None,
                 included: true,
             },
-            PlanOpInput::CreateFolder { id: "c2".into(), path: format!("{r}/X/Y"), included: true },
-            PlanOpInput::CreateFolder { id: "c1".into(), path: format!("{r}/X"), included: true },
+            PlanOpInput::CreateFolder {
+                id: "c2".into(),
+                path: format!("{r}/X/Y"),
+                included: true,
+            },
+            PlanOpInput::CreateFolder {
+                id: "c1".into(),
+                path: format!("{r}/X"),
+                included: true,
+            },
             PlanOpInput::Rename {
                 id: "n1".into(),
                 path: format!("{r}/a.pdf"),
@@ -732,7 +886,10 @@ mod tests {
         assert!(!root.join("a.pdf").exists());
         assert_eq!(fs::read(root.join("a1.pdf")).unwrap(), b"PDF");
         assert!(!root.join("sub").exists());
-        assert_eq!(fs::read(root.join("X").join("Y").join("b.txt")).unwrap(), b"B");
+        assert_eq!(
+            fs::read(root.join("X").join("Y").join("b.txt")).unwrap(),
+            b"B"
+        );
         let slots: Vec<_> = fs::read_dir(trash_slot_dir()).unwrap().collect();
         assert_eq!(slots.len(), 1, "sub must be trashed as one slot");
 
@@ -755,27 +912,84 @@ mod tests {
     }
 
     #[test]
+    fn undo_move_back_uses_restored_name_without_overwriting_new_file() {
+        let _guard = TRASH_TEST_LOCK.lock().unwrap();
+        let base = temp_base("move-back-collision");
+        set_env(&base);
+        let original = base.join("source").join("report.txt");
+        let moved = base.join("destination").join("report.txt");
+        fs::create_dir_all(original.parent().unwrap()).unwrap();
+        fs::create_dir_all(moved.parent().unwrap()).unwrap();
+        fs::write(&original, b"new file created after move").unwrap();
+        fs::write(&moved, b"original moved file").unwrap();
+
+        let journal = JournalFile {
+            mounts: std::collections::BTreeMap::new(),
+            version: 1,
+            batch_id: "move-back-collision".into(),
+            created_at: 0,
+            root_path: s(&base),
+            entries: vec![Inverse::MoveBack {
+                from: s(&moved),
+                to: s(&original),
+            }],
+        };
+        write_journal(&journal).unwrap();
+
+        let report = undo_ops("move-back-collision", false, &mut |_, _, _| {}).unwrap();
+
+        assert_eq!(report.applied, 1);
+        assert!(report.failed.is_empty());
+        assert_eq!(fs::read(&original).unwrap(), b"new file created after move");
+        assert_eq!(
+            fs::read(base.join("source").join("report (restored).txt")).unwrap(),
+            b"original moved file"
+        );
+        assert!(!moved.exists());
+        assert!(journal_path("move-back-collision")
+            .with_extension("undone.json")
+            .exists());
+        clear_env(&base);
+    }
+
+    #[test]
     fn guard_blocks_protected_even_if_client_includes() {
         let _guard = TRASH_TEST_LOCK.lock().unwrap();
         let base = temp_base("guard");
         set_env(&base);
 
         let ops = vec![
-            PlanOpInput::Trash { id: "g1".into(), path: "/Applications".into(), included: true },
+            PlanOpInput::Trash {
+                id: "g1".into(),
+                path: "/Applications".into(),
+                included: true,
+            },
             PlanOpInput::Rename {
                 id: "g2".into(),
                 path: "/System/Library/CoreServices".into(),
                 new_name: "hax".into(),
                 included: true,
             },
+            PlanOpInput::CreateFile {
+                id: "g3".into(),
+                path: "/System/clive-guard-test.txt".into(),
+                content: "must not be written".into(),
+                included: true,
+            },
         ];
         let report = apply_ops("gb1", &ops, false, &mut |_, _, _| {}).unwrap();
         assert_eq!(report.applied, 0);
-        assert_eq!(report.failed.len(), 2);
+        assert_eq!(report.failed.len(), 3);
         // order follows engine phases (rename before trash), so match by id
-        let has_failed = |id: &str| report.failed.iter().any(|f| f.id == id && f.error.contains("Protected"));
+        let has_failed = |id: &str| {
+            report
+                .failed
+                .iter()
+                .any(|f| f.id == id && f.error.contains("Protected"))
+        };
         assert!(has_failed("g1"), "failed: {:?}", report.failed);
         assert!(has_failed("g2"), "failed: {:?}", report.failed);
+        assert!(has_failed("g3"), "failed: {:?}", report.failed);
         assert!(Path::new("/Applications").is_dir());
         assert!(Path::new("/System/Library/CoreServices").is_dir());
 
@@ -801,6 +1015,7 @@ mod tests {
             id: "m1".into(),
             path: s(&root.join("f.txt")),
             dest_dir: s(&root.join("dst")),
+            dest_name: None,
             included: true,
         }];
         let first = apply_ops("i1", &ops, false, &mut |_, _, _| {}).unwrap();
@@ -828,7 +1043,11 @@ mod tests {
 
         // first op succeeds, second fails (rename onto an existing target)
         let ops = vec![
-            PlanOpInput::CreateFolder { id: "c1".into(), path: s(&root.join("X")), included: true },
+            PlanOpInput::CreateFolder {
+                id: "c1".into(),
+                path: s(&root.join("X")),
+                included: true,
+            },
             PlanOpInput::Rename {
                 id: "r1".into(),
                 path: s(&root.join("a.txt")),
@@ -890,6 +1109,7 @@ mod tests {
             id: "m1".into(),
             path: s(&root.join("X")),
             dest_dir: s(&root.join("X/sub")),
+            dest_name: None,
             included: true,
         }];
         let report = apply_ops("st1", &ops, false, &mut |_, _, _| {}).unwrap();
@@ -902,6 +1122,7 @@ mod tests {
             id: "m2".into(),
             path: s(&root.join("X")),
             dest_dir: s(&root.join("X")),
+            dest_name: None,
             included: true,
         }];
         let r2 = apply_ops("st2", &ops2, false, &mut |_, _, _| {}).unwrap();
@@ -954,7 +1175,11 @@ mod tests {
         fs::write(root.join("f.txt"), b"F").unwrap();
         set_env(&base);
 
-        let ops = vec![PlanOpInput::Trash { id: "t1".into(), path: s(&root.join("f.txt")), included: true }];
+        let ops = vec![PlanOpInput::Trash {
+            id: "t1".into(),
+            path: s(&root.join("f.txt")),
+            included: true,
+        }];
         apply_ops("kd1", &ops, false, &mut |_, _, _| {}).unwrap();
 
         // simulate "Finder emptied": the trash slot is gone → every inverse fails
@@ -970,7 +1195,11 @@ mod tests {
         assert!(!journal_path("kd1").with_extension("undone.json").exists());
 
         // trashing the trash dir itself is refused
-        let bad = vec![PlanOpInput::Trash { id: "t2".into(), path: s(&tdir), included: true }];
+        let bad = vec![PlanOpInput::Trash {
+            id: "t2".into(),
+            path: s(&tdir),
+            included: true,
+        }];
         let r = apply_ops("kd2", &bad, false, &mut |_, _, _| {}).unwrap();
         assert_eq!(r.failed[0].error, "cannot trash the trash directory");
 
@@ -983,16 +1212,23 @@ mod tests {
         let json = r#"[
             {"id":"c","kind":"createFolder","path":"/tmp/X","included":true},
             {"id":"n","kind":"rename","path":"/tmp/a","newName":"b","included":false},
-            {"id":"m","kind":"move","path":"/tmp/a","destDir":"/tmp/X","included":true},
+            {"id":"m","kind":"move","path":"/tmp/a","destDir":"/tmp/X","destName":"b","included":true},
+            {"id":"f","kind":"createFile","path":"/tmp/note.md","content":"hello","included":true},
             {"id":"t","kind":"trash","path":"/tmp/a","included":true}
         ]"#;
         let ops: Vec<PlanOpInput> = serde_json::from_str(json).unwrap();
-        assert_eq!(ops.len(), 4);
+        assert_eq!(ops.len(), 5);
         assert!(!included_of(&ops[1]));
+        assert!(matches!(&ops[2], PlanOpInput::Move { dest_name: Some(name), .. } if name == "b"));
+        assert!(matches!(&ops[3], PlanOpInput::CreateFile { content, .. } if content == "hello"));
         let report = ApplyReport {
             applied: 1,
             skipped: 2,
-            failed: vec![FailedOp { id: "x".into(), code: "filesystem".into(), error: "e".into() }],
+            failed: vec![FailedOp {
+                id: "x".into(),
+                code: "filesystem".into(),
+                error: "e".into(),
+            }],
             batch_id: "b".into(),
             total: 3,
             duration_ms: 0,
@@ -1002,8 +1238,11 @@ mod tests {
         assert_eq!(v["batchId"], "b");
         assert_eq!(v["failed"][0]["id"], "x");
         assert_eq!(v["failed"][0]["error"], "e");
-        let inv: serde_json::Value =
-            serde_json::to_value(Inverse::RemoveDir { path: "/p".into(), was_new: true }).unwrap();
+        let inv: serde_json::Value = serde_json::to_value(Inverse::RemoveDir {
+            path: "/p".into(),
+            was_new: true,
+        })
+        .unwrap();
         assert_eq!(inv["removeDir"]["wasNew"], true);
         let inv: serde_json::Value = serde_json::to_value(Inverse::RestoreFromTrash {
             slot: "/s".into(),
@@ -1011,5 +1250,59 @@ mod tests {
         })
         .unwrap();
         assert_eq!(inv["restoreFromTrash"]["slot"], "/s");
+    }
+
+    #[test]
+    fn create_file_is_journaled_and_undo_removes_only_unchanged_content() {
+        let _guard = TRASH_TEST_LOCK.lock().unwrap();
+        let base = temp_base("create-file-undo");
+        let root = base.join("root");
+        fs::create_dir_all(&root).unwrap();
+        set_env(&base);
+        let path = root.join("note.md");
+        let ops = vec![PlanOpInput::CreateFile {
+            id: "file-1".into(),
+            path: s(&path),
+            content: "hello".into(),
+            included: true,
+        }];
+
+        let applied = apply_ops("file-undo", &ops, false, &mut |_, _, _| {}).unwrap();
+        assert_eq!(applied.applied, 1);
+        assert_eq!(fs::read(&path).unwrap(), b"hello");
+        let journal: JournalFile =
+            serde_json::from_str(&fs::read_to_string(journal_path("file-undo")).unwrap()).unwrap();
+        assert!(matches!(
+            journal.entries.as_slice(),
+            [Inverse::RemoveFile { .. }]
+        ));
+
+        let undone = undo_ops("file-undo", false, &mut |_, _, _| {}).unwrap();
+        assert_eq!(undone.applied, 1);
+        assert!(!path.exists());
+
+        fs::write(&path, b"pre-existing").unwrap();
+        let collision = apply_ops("file-collision", &ops, false, &mut |_, _, _| {}).unwrap();
+        assert_eq!(collision.applied, 0);
+        assert_eq!(collision.failed[0].code, "target_exists");
+        assert_eq!(fs::read(&path).unwrap(), b"pre-existing");
+        fs::remove_file(&path).unwrap();
+
+        let second = vec![PlanOpInput::CreateFile {
+            id: "file-2".into(),
+            path: s(&path),
+            content: "original".into(),
+            included: true,
+        }];
+        apply_ops("file-changed", &second, false, &mut |_, _, _| {}).unwrap();
+        fs::write(&path, b"user edit").unwrap();
+        let failed_undo = undo_ops("file-changed", false, &mut |_, _, _| {}).unwrap();
+        assert_eq!(failed_undo.failed[0].code, "file_changed");
+        assert_eq!(fs::read(&path).unwrap(), b"user edit");
+        assert!(
+            journal_path("file-changed").exists(),
+            "failed inverse must remain retryable"
+        );
+        clear_env(&base);
     }
 }

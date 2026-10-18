@@ -33,7 +33,24 @@ make dev       # development
 make build     # release bundle in target/release/bundle
 ```
 
-GitHub Actions builds the Apple Silicon DMG for version tags (`vX.Y.Z`). The
+## Tests & coverage
+
+```sh
+make quality             # CI gate: fmt, Clippy, tests, and >=85% line coverage per suite
+make frontend-test       # Vitest
+make frontend-coverage   # Vitest + V8 coverage; HTML in frontend/coverage/
+make rust-coverage       # Rust tests + llvm-cov report and 85% line gate (Xcode CLT + llvm-tools-preview)
+make coverage            # both coverage runs
+```
+
+Coverage reports are local build artifacts. The Rust and frontend suites have
+separate 85% line-coverage gates; branch/function coverage remains visible but
+is not gated yet. See [`docs/test-coverage.md`](docs/test-coverage.md) for the
+measured baseline and remaining gaps.
+
+The Gitea workflow runs `make quality` on pull requests and builds and verifies
+the Apple Silicon DMG before uploading its artifact. GitHub Actions
+builds the Apple Silicon DMG for version tags (`vX.Y.Z`). The
 app is ad-hoc signed so macOS does not label the downloaded package damaged.
 Since it is not signed with a Developer ID certificate or notarized, macOS
 may show “Apple could not verify ‘Clive’ is free of malware.” To approve it,
@@ -97,12 +114,13 @@ make release
 ```
 
 `make release` does not push. Review the generated commit and tag, then push
-both to Gitea. Its existing workflow builds the DMG from version tags. To
-publish the same version on GitHub, update GitHub from a filtered source
-snapshot and push the matching tag there; GitHub keeps its own history and
-`.github` workflow, while Gitea keeps `.gitea` and its local configuration.
-The GitHub DMG workflow runs on version tags (or manual dispatch), so pushing
-the snapshot to `main` does not create a duplicate release build. The two
-repositories use the same `vX.Y.Z` label on their respective release commits.
+the release commit to Gitea. Gitea's `.gitea` workflow builds Apple Silicon
+and Intel DMGs on `main` and version tags. GitHub is a separate filtered mirror
+with its own history and `.github` workflow. Publish the matching version there
+from a filtered source snapshot without `.gitea`; keep the `.github` workflow
+and push the matching tag. The GitHub DMG workflow runs on version tags or
+manual dispatch, so updating its `main` branch does not create a duplicate
+release build. Both repositories use the same `vX.Y.Z` label on their release
+commits.
 
 The `About` section in Settings shows version, build date, and git commit.

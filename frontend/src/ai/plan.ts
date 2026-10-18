@@ -26,7 +26,7 @@ export interface ModelPlanShape {
 export type PlanOp =
   | { id: string; kind: 'createFolder'; path: string; included: boolean; issue?: string }
   | { id: string; kind: 'rename'; path: string; newName: string; included: boolean; issue?: string }
-  | { id: string; kind: 'move'; path: string; destDir: string; included: boolean; issue?: string }
+  | { id: string; kind: 'move'; path: string; destDir: string; destName?: string; included: boolean; issue?: string }
   | { id: string; kind: 'trash'; path: string; included: boolean; issue?: string }
 export interface Plan { rootPath: string; ops: PlanOp[]; unchanged: FileEntry[]; warnings: string[]; debugId?: string }
 export interface ExpandCtx { rootPath: string; entries: FileEntry[]; guardOn: boolean }

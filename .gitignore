@@ -12,6 +12,7 @@ node_modules/
 # Frontend build output
 frontend/dist/
 frontend/.vite/
+frontend/coverage/
 
 # Tauri / bundling
 gen/schemas/

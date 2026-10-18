@@ -1,91 +1,81 @@
 // @vitest-environment jsdom
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent, cleanup } from '@testing-library/react'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import i18n from './i18n'
-import { FilePane, type PaneId, type PaneState } from './FilePane'
+import { FilePane } from './FilePane'
+import type { PaneState } from './FilePane'
 import type { FileEntry } from './api'
 
-beforeEach(async () => {
-  cleanup()
-  await i18n.changeLanguage('it')
+const pane = (path: string, entries: FileEntry[] = []): PaneState => ({ path, entries, selected: new Set(), anchorPath: null, renamingPath: null, query: '', loading: false })
+const entry: FileEntry = { name: 'notes.txt', path: '/Users/test/notes.txt', isDir: false, size: 2, modified: 0, extension: 'txt' }
+const makeProps = (over: Record<string, unknown> = {}) => ({
+  id: 'left' as const, pane: pane('/Users/test/Projects'), files: [entry], active: true, view: 'list' as const,
+  sort: { key: 'name' as const, dir: 1 as const }, home: '/Users/test', recents: ['/tmp/recent'], pinned: ['/tmp/favourite'],
+  onActivate: vi.fn(), onCollapse: vi.fn(), onNavigate: vi.fn(), onItemClick: vi.fn(), onOpen: vi.fn(), onContextMenu: vi.fn(),
+  onRenameConfirm: vi.fn(), onRenameCancel: vi.fn(), onSortChange: vi.fn(), dragPayload: vi.fn(() => ''),
+  onDropTransfer: vi.fn(), onDropToDir: vi.fn(), onMarquee: vi.fn(), ...over,
 })
 
-const files: FileEntry[] = [
-  { name: 'docs', path: '/home/me/docs', isDir: true, size: 0, modified: 0, extension: null },
-  { name: 'a.txt', path: '/home/me/a.txt', isDir: false, size: 3, modified: 0, extension: 'txt' },
-]
-const pane: PaneState = { path: '/home/me', entries: files, selected: new Set(['/home/me/a.txt']), anchorPath: null, renamingPath: null, query: '', loading: false }
-
-function setup() {
-  const props = {
-    id: 'left' as PaneId,
-    pane,
-    files,
-    active: false,
-    view: 'list' as const,
-    sort: { key: 'name' as const, dir: 1 as const },
-    home: '/home/me',
-    recents: ['/home/me/Downloads'],
-    pinned: [],
-    onActivate: vi.fn(),
-    onNavigate: vi.fn(),
-    onItemClick: vi.fn(),
-    onOpen: vi.fn(),
-    onContextMenu: vi.fn(),
-    onRenameConfirm: vi.fn(),
-    onRenameCancel: vi.fn(),
-    onSortChange: vi.fn(),
-    dragPayload: vi.fn(() => JSON.stringify(['/home/me/a.txt'])),
-    onDropTransfer: vi.fn(),
-    onDropToDir: vi.fn(),
-  }
-  render(<FilePane {...props} />)
-  return props
-}
-
-const dt = (payload: unknown) => ({
-  dataTransfer: { getData: () => JSON.stringify(payload), setData() {}, dropEffect: '' },
-})
+beforeEach(async () => { await i18n.changeLanguage('en') })
+afterEach(cleanup)
 
 describe('FilePane', () => {
-  it('activates the pane on pointer down', () => {
-    const p = setup()
+  it('navigates through breadcrumbs, places, pins, recents, and collapse', () => {
+    const props = makeProps()
+    render(<FilePane {...props} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Projects' }))
+    expect(props.onNavigate).toHaveBeenCalledWith('left', '/Users/test/Projects')
+    fireEvent.click(screen.getByTitle('Go to…'))
+    fireEvent.click(screen.getByRole('button', { name: 'Parent folder' }))
+    fireEvent.click(screen.getByTitle('Go to…'))
+    fireEvent.click(screen.getByTitle('/tmp/favourite'))
+    fireEvent.click(screen.getByTitle('Go to…'))
+    fireEvent.click(screen.getByTitle('/tmp/recent'))
+    fireEvent.click(screen.getByTitle('Collapse pane'))
+    expect(props.onCollapse).toHaveBeenCalledWith('left')
+    expect(props.onNavigate).toHaveBeenCalledWith('left', '/tmp/recent')
+  })
+
+  it('handles pane and breadcrumb drops and ignores malformed payloads', () => {
+    const props = makeProps()
+    const { container } = render(<FilePane {...props} />)
+    const region = screen.getByRole('region')
+    const transfer = { dataTransfer: { getData: () => JSON.stringify(['/tmp/file']) } }
+    fireEvent.drop(region, transfer)
+    expect(props.onDropTransfer).toHaveBeenCalledWith('left', ['/tmp/file'], false)
+    fireEvent.drop(screen.getByRole('button', { name: 'test' }), transfer)
+    expect(props.onDropToDir).toHaveBeenCalledWith('/Users/test', ['/tmp/file'], false)
+    const callsBeforeInvalid = vi.mocked(props.onDropTransfer).mock.calls.length
+    fireEvent.drop(region, { dataTransfer: { getData: () => '{invalid' } })
+    expect(props.onDropTransfer).toHaveBeenCalledTimes(callsBeforeInvalid)
+    expect(container.querySelector('[data-file-path]')).toBeInTheDocument()
+  })
+
+  it('renders archive breadcrumbs and navigates to archive root and nested members', () => {
+    const props = makeProps({ pane: pane('/Users/test/archive.zip!/docs/readme.md'), files: [] })
+    render(<FilePane {...props} />)
+    fireEvent.click(screen.getByRole('button', { name: 'archive.zip' }))
+    expect(props.onNavigate).toHaveBeenCalledWith('left', '/Users/test/archive.zip!/')
+    fireEvent.click(screen.getByRole('button', { name: 'docs' }))
+    expect(props.onNavigate).toHaveBeenCalledWith('left', '/Users/test/archive.zip!/docs')
+  })
+
+  it('shows loading without an empty listing and activates on pointer interaction', () => {
+    const props = makeProps({ files: [], pane: { ...pane('/Users/test'), loading: true }, active: false })
+    render(<FilePane {...props} />)
+    expect(screen.getByText('Loading…')).toBeInTheDocument()
     fireEvent.pointerDown(screen.getByRole('region'))
-    expect(p.onActivate).toHaveBeenCalledWith('left')
+    expect(props.onActivate).toHaveBeenCalledWith('left')
   })
 
-  it('routes row interactions with the pane id', () => {
-    const p = setup()
-    const row = screen.getByText('a.txt')
-    fireEvent.click(row, { metaKey: false, ctrlKey: false, shiftKey: false })
-    expect(p.onItemClick).toHaveBeenCalledWith('left', expect.objectContaining({ name: 'a.txt' }), expect.anything())
-    fireEvent.doubleClick(row)
-    expect(p.onOpen).toHaveBeenCalledWith('left', expect.objectContaining({ name: 'a.txt' }))
-  })
-
-  it('opens the per-pane Go-to menu and navigates to a place', () => {
-    const p = setup()
-    fireEvent.click(screen.getByTitle('Vai a…'))
-    fireEvent.click(screen.getByText('Scaricati'))
-    expect(p.onNavigate).toHaveBeenCalledWith('left', '/home/me/Downloads')
-  })
-
-  it('navigates to a folder by clicking a breadcrumb segment', () => {
-    const p = setup()
-    fireEvent.click(screen.getByText('home'))
-    expect(p.onNavigate).toHaveBeenCalledWith('left', '/home')
-  })
-
-  it('handles a drop on the pane body via onDropTransfer', () => {
-    const p = setup()
-    fireEvent.drop(screen.getByRole('region'), dt(['/home/me/x.png']))
-    expect(p.onDropTransfer).toHaveBeenCalledWith('left', ['/home/me/x.png'], false)
-  })
-
-  it('handles a drop on a Go-to item via onDropToDir (4.4)', () => {
-    const p = setup()
-    fireEvent.click(screen.getByTitle('Vai a…'))
-    fireEvent.drop(screen.getByText('Scaricati'), dt(['/home/me/x.png']))
-    expect(p.onDropToDir).toHaveBeenCalledWith('/home/me/Downloads', ['/home/me/x.png'], false)
+  it('offers each standard place in the navigation menu', () => {
+    const props = makeProps()
+    render(<FilePane {...props} />)
+    fireEvent.click(screen.getByTitle('Go to…'))
+    for (const [label, path] of [['Home', '/Users/test'], ['Desktop', '/Users/test/Desktop'], ['Documents', '/Users/test/Documents'], ['Downloads', '/Users/test/Downloads'], ['Pictures', '/Users/test/Pictures'], ['Music', '/Users/test/Music']]) {
+      fireEvent.click(screen.getByRole('button', { name: label }))
+      expect(props.onNavigate).toHaveBeenLastCalledWith('left', path)
+      fireEvent.click(screen.getByTitle('Go to…'))
+    }
   })
 })

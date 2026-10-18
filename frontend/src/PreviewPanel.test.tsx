@@ -38,6 +38,7 @@ describe('PreviewPanel', () => {
     render(<PreviewPanel selection={[]} />)
     expect(screen.getByText('Select a file to preview it')).toBeInTheDocument()
     expect(mocks.readFileBytes).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: 'Expand preview and minimize both file panes' }))
   })
 
   it('expands to fill the workspace and restores its normal width', () => {
@@ -58,15 +59,39 @@ describe('PreviewPanel', () => {
     await waitFor(() => expect(screen.getByRole('img', { name: 'photo.png' })).toHaveAttribute('src', 'blob:fake'))
   })
 
+  it('renders video, audio, PDF, and plain-text previews', async () => {
+    const { rerender } = render(<PreviewPanel selection={[file('clip.mp4')]} />)
+    await waitFor(() => expect(document.querySelector('video')).toHaveAttribute('src', 'blob:fake'))
+
+    rerender(<PreviewPanel selection={[file('song.mp3')]} />)
+    await waitFor(() => expect(document.querySelector('audio')).toHaveAttribute('src', 'blob:fake'))
+
+    rerender(<PreviewPanel selection={[file('report.pdf')]} />)
+    await waitFor(() => expect(document.querySelector('iframe[title="report.pdf"]')).toHaveAttribute('src', 'blob:fake'))
+
+    rerender(<PreviewPanel selection={[file('notes.txt')]} />)
+    await waitFor(() => expect(document.querySelector('pre')).toHaveTextContent('# hi **bold**'))
+  })
+
   it('renders markdown as formatted HTML for .md files', async () => {
     render(<PreviewPanel selection={[file('README.md')]} />)
     await waitFor(() => expect(screen.getByText('hi').querySelector('strong') ?? document.querySelector('[data-preview-panel] strong')).not.toBeNull())
     expect(mocks.readFileBytes).not.toHaveBeenCalled()
   })
 
+  it('marks long text previews when content is truncated', async () => {
+    mocks.readTextFile.mockResolvedValueOnce(Array.from({ length: 5001 }, (_, i) => `line ${i}`).join('\n'))
+    render(<PreviewPanel selection={[file('large.txt')]} />)
+    await waitFor(() => expect(screen.getByText('… truncated')).toBeInTheDocument())
+  })
+
   it('falls back to Quick Look card for unknown types and folder counts children', async () => {
     const { rerender } = render(<PreviewPanel selection={[file('a.zip')]} />)
     await waitFor(() => expect(document.querySelector('[data-preview-fallback]')).not.toBeNull())
+    fireEvent.click(screen.getByRole('button', { name: 'Open with Quick Look' }))
+    expect(mocks.quickLook).toHaveBeenCalledWith('/f/a.zip')
+    fireEvent.click(screen.getByRole('button', { name: 'Open' }))
+    expect(mocks.openPath).toHaveBeenCalledWith('/f/a.zip')
     rerender(<PreviewPanel selection={[file('docs', true)]} />)
     await waitFor(() => expect(screen.getByText('7 items')).toBeInTheDocument())
   })

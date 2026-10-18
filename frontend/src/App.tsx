@@ -9,28 +9,21 @@ import {
   type ReactNode,
 } from 'react'
 import {
-  clearClipboard,
-  copyPaths,
   createFolder,
-  cutPaths,
   deleteToTrash,
-  getClipboard,
   homeDir,
   listDir,
   openPath,
   openTerminal,
-  pastePaths,
   quickLook,
   rename,
   revealInFinder,
   undoPlan,
-  type ClipboardInfo,
   type FileEntry,
 } from './api'
 import { type SortKey } from './FileList'
 import { FilePane, type PaneId } from './FilePane'
 import { PreviewPanel } from './PreviewPanel'
-import { restorePaneCollapseState } from './previewLayout'
 import { isArchivePath, splitArchivePath, joinArchivePath, listArchiveEntries, archiveBasename } from './archivePath'
 import { stepRange } from './selection'
 import { zipList, zipExtract } from './api'
@@ -59,7 +52,6 @@ import { writeLastBatch, readLastBatch, clearLastBatch } from './ai/planJournalS
 import { fullModelId } from './ai/settings'
 import { SettingsModal } from './settings/SettingsModal'
 import { TransferPicker } from './TransferPicker'
-import { transferBatch } from './transfer'
 import { Sidebar } from './Sidebar'
 import { useVolumes } from './volumes'
 import { describeLocation } from './location'
@@ -69,6 +61,9 @@ import { useTranslation } from 'react-i18next'
 import i18n from './i18n'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { TagEditor } from './TagEditor'
+import { useTransferWorkflow } from './useTransferWorkflow'
+import { usePreviewLayout } from './usePreviewLayout'
+import { usePaneNavigation } from './usePaneNavigation'
 
 function Modal({
   title,
@@ -221,9 +216,6 @@ const IconFinder = () => <Ico><circle cx="11" cy="11" r="6" /><path d="M20 20l-4
 export default function App() {
   const { t } = useTranslation()
   const mountedVolumes = useVolumes()
-  const [backStack, setBackStack] = useState<string[]>([])
-  const [fwdStack, setFwdStack] = useState<string[]>([])
-  const [clip, setClip] = useState<ClipboardInfo>({ paths: [], operation: null })
   const [editingPath, setEditingPath] = useState(false)
   const [pathDraft, setPathDraft] = useState('')
   const [statusMessage, setStatusMessage] = useState<{message: string, type: 'success'|'error'|'info', timeout?: number}|null>(null)
@@ -262,9 +254,8 @@ export default function App() {
   const [multiRename, setMultiRename] = useState(false)
   const [extractTo, setExtractTo] = useState<{ archive: string; members: string[] | null } | null>(null)
   const [extractDest, setExtractDest] = useState('')
-  const [transferReq, setTransferReq] = useState<{ mode: 'copy' | 'move'; paths: string[] } | null>(null)
-  const [pasteInFlight, setPasteInFlight] = useState(false)
   const loadedRef = useRef(false)
+  const listingRequestRef = useRef<Record<PaneId, number>>({ left: 0, right: 0 })
 
   const [splitPct, setSplitPct] = useState<number>(() => {
     const v = parseFloat(localStorage.getItem('fm.split') || '')
@@ -273,11 +264,6 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('fm.split', String(splitPct))
   }, [splitPct])
-
-  const [previewExpanded, setPreviewExpanded] = useState(false)
-  useEffect(() => {
-    if (!cfg.previewPanel) setPreviewExpanded(false)
-  }, [cfg.previewPanel])
 
   // Row drag payload = the row's pane selection (or just the row if unselected).
   const dragPayload = useCallback(
@@ -338,24 +324,13 @@ export default function App() {
     },
     [setCfg],
   )
-  // Activate a pane, expanding it first if it's collapsed.
-  const activatePane = useCallback(
-    (id: PaneId) => {
-      setPreviewExpanded(false)
-      if (previewExpanded) setCfg({ paneCollapsed: restorePaneCollapseState(getAppConfig().paneCollapsed, id) })
-      else expandPane(id)
-      setActive(id)
-    },
-    [expandPane, previewExpanded, setCfg, setActive],
-  )
-  const togglePreviewExpanded = useCallback(() => {
-    if (previewExpanded) {
-      setPreviewExpanded(false)
-      setCfg({ paneCollapsed: restorePaneCollapseState(getAppConfig().paneCollapsed) })
-    } else {
-      setPreviewExpanded(true)
-    }
-  }, [previewExpanded, setCfg])
+  const { previewExpanded, activatePane, togglePreviewExpanded } = usePreviewLayout({
+    enabled: cfg.previewPanel,
+    paneCollapseState: cfg.paneCollapsed,
+    setPaneCollapseState: (paneCollapsed) => setCfg({ paneCollapsed }),
+    expandPane,
+    setActivePane: setActive,
+  })
   // Collapse/expand a pane (never both collapsed). Collapsing the active pane
   // moves focus to the other one.
   const toggleCollapse = useCallback(
@@ -425,6 +400,7 @@ export default function App() {
 
   const refreshPane = useCallback(
     async (id: PaneId, path: string) => {
+      const requestId = ++listingRequestRef.current[id]
       invalidateChildCount()
       patch(id, (p) => ({ ...p, loading: true }))
       try {
@@ -437,9 +413,11 @@ export default function App() {
         } else {
           items = await listDir(path, hiddenVisible)
         }
+        if (listingRequestRef.current[id] !== requestId) return
         patch(id, (p) => ({ ...p, entries: items, loading: false }))
       } catch (err) {
-        patch(id, (p) => ({ ...p, loading: false }))
+        if (listingRequestRef.current[id] !== requestId) return
+        patch(id, (p) => ({ ...p, entries: [], selected: new Set(), anchorPath: null, loading: false }))
         handleSetStatus(archiveErrorText(String(err)), 'error')
       }
     },
@@ -455,14 +433,17 @@ export default function App() {
     return e
   }
 
-  const readOnlyActive = () => isArchivePath(panesRef.current[activeRef.current].path)
-  const assertWritable = (): boolean => {
+  const readOnlyActive = useCallback(
+    () => isArchivePath(panesRef.current[activeRef.current].path),
+    [panesRef, activeRef],
+  )
+  const assertWritable = useCallback((): boolean => {
     if (readOnlyActive()) {
       handleSetStatus(i18n.t('archive.readOnly'), 'info')
       return false
     }
     return true
-  }
+  }, [readOnlyActive, handleSetStatus])
   const openNewFolderPrompt = () => {
     if (!assertWritable()) return
     setNewFolderName('')
@@ -486,24 +467,26 @@ export default function App() {
     if (!r.extracted) throw new Error('corrupt')
     return members.map((m) => `${dest}/${m.split('/').pop()}`)
   }
-  const refresh = useCallback((path: string) => refreshPane(active, path), [active, refreshPane])
-
-  const navigatePane = useCallback(
-    async (id: PaneId, path: string, pushHistory = true) => {
-      patch(id, (p) => ({ ...p, selected: new Set(), anchorPath: null, renamingPath: null, query: '', path }))
-      if (id === active) setEditingPath(false)
-      setContextMenu(null)
-      if (pushHistory && id === active) {
-        const prev = panesRef.current[id].path
-        if (prev && prev !== path) setBackStack((b) => [...b, prev].filter(Boolean))
-        setFwdStack([])
-      }
-      setRecents((prev) => [path, ...prev.filter((p) => p !== path)].slice(0, 12))
-      await refreshPane(id, path)
-    },
-    [active, patch, refreshPane, setRecents],
-  )
-  const navigate = useCallback((path: string, pushHistory = true) => navigatePane(active, path, pushHistory), [active, navigatePane])
+  const closeContextMenu = useCallback(() => setContextMenu(null), [])
+  const {
+    navigatePane,
+    navigate,
+    refresh,
+    goUp,
+    goBack,
+    goForward,
+    canGoBack,
+    canGoForward,
+  } = usePaneNavigation({
+    active,
+    currentPath,
+    panesRef,
+    patch,
+    refreshPane,
+    setRecents,
+    setEditingPath,
+    closeContextMenu,
+  })
 
   useEffect(() => {
     const init = async () => {
@@ -518,11 +501,6 @@ export default function App() {
         right: { path: parent, entries: [], selected: new Set(), anchorPath: null, renamingPath: null, query: '', loading: false },
       })
       await Promise.all([refreshPane('left', h), refreshPane('right', parent)])
-      try {
-        setClip(await getClipboard())
-      } catch {
-        /* no clipboard yet */
-      }
     }
     if (!loadedRef.current) {
       loadedRef.current = true
@@ -576,29 +554,6 @@ export default function App() {
     refresh: () => refresh(currentPath),
   })
 
-  const goUp = useCallback(async () => {
-    const parent = currentPath !== '/' ? currentPath.replace(/\/[^/]*$/, '') : ''
-    if (parent && parent !== currentPath) await navigate(parent || '/')
-  }, [currentPath, navigate])
-
-  const goBack = useCallback(async () => {
-    if (!backStack.length) return
-    const prev = backStack[backStack.length - 1]
-    setBackStack((s) => s.slice(0, -1))
-    setFwdStack((s) => [...s, currentPath])
-    patchActive((p) => ({ ...p, path: prev }))
-    await refreshPane(active, prev)
-  }, [backStack, currentPath, active, refreshPane, patchActive])
-
-  const goForward = useCallback(async () => {
-    if (!fwdStack.length) return
-    const next = fwdStack[fwdStack.length - 1]
-    setFwdStack((s) => s.slice(0, -1))
-    setBackStack((s) => [...s, currentPath])
-    patchActive((p) => ({ ...p, path: next }))
-    await refreshPane(active, next)
-  }, [currentPath, fwdStack, active, refreshPane, patchActive])
-
   const onOpen = useCallback(
     async (id: PaneId, file: FileEntry) => {
       const parts = splitArchivePath(file.path)
@@ -649,6 +604,42 @@ export default function App() {
     () => sortedEntries.filter((e) => selected.has(e.path)),
     [sortedEntries, selected],
   )
+
+  const {
+    clip,
+    pasteInFlight,
+    transferReq,
+    setTransferReq,
+    handleCopyCut,
+    handlePaste,
+    handleClearClip,
+    applyTransfer,
+    handleTransfer,
+    swapPanes,
+    sendToOtherPane,
+    dropIntoPane,
+    dropToDir,
+  } = useTransferWorkflow({
+    active,
+    currentPath,
+    panesRef,
+    setPanes,
+    selectedEntries,
+    refresh,
+    refreshPane,
+    expandPane,
+    assertWritable,
+    setStatus: handleSetStatus,
+  })
+
+  const handleOpenTerminalHere = useCallback(async () => {
+    if (!assertWritable()) return
+    try {
+      await openTerminal(currentPath)
+    } catch (error) {
+      handleSetStatus(String(error), 'error')
+    }
+  }, [assertWritable, currentPath, handleSetStatus])
 
   const chat = useChat({
     enabled: cfg.ai.enabled,
@@ -786,122 +777,6 @@ export default function App() {
     if (cfg.confirmDestructive || currentLocation.kind === 'network') setShowDeleteConfirm(true)
     else void handleDelete()
   }, [selectedEntries.length, cfg.confirmDestructive, currentLocation.kind, handleDelete])
-
-  const handleCopyCut = useCallback(
-    async (op: 'copy' | 'move') => {
-      if (!assertWritable()) return
-      const paths = selectedEntries.map((e) => e.path)
-      if (!paths.length) return
-      try {
-        if (op === 'copy') await copyPaths(paths)
-        else await cutPaths(paths)
-        setClip(await getClipboard())
-        handleSetStatus(i18n.t(op === 'copy' ? 'status.copied' : 'status.cut', { count: paths.length }), 'success')
-      } catch (err) {
-        handleSetStatus(String(err), 'error')
-      }
-    },
-    [selectedEntries, handleSetStatus],
-  )
-
-  const handlePaste = useCallback(async () => {
-    if (!clip.paths.length) return
-    if (!assertWritable()) return
-    setPasteInFlight(true)
-    try {
-      await pastePaths(currentPath)
-      setClip(await getClipboard())
-      await refresh(currentPath)
-      handleSetStatus(i18n.t('status.pasted'), 'success')
-    } catch (err) {
-      handleSetStatus(String(err), 'error')
-    } finally {
-      setPasteInFlight(false)
-    }
-  }, [clip, currentPath, refresh, handleSetStatus])
-
-  const handleClearClip = useCallback(async () => {
-    await clearClipboard()
-    setClip({ paths: [], operation: null })
-    handleSetStatus(i18n.t('status.clipboardCleared'), 'success')
-  }, [handleSetStatus])
-
-  const handleOpenTerminalHere = useCallback(async () => {
-    if (!assertWritable()) return
-    try {
-      await openTerminal(currentPath)
-    } catch (err) {
-      handleSetStatus(String(err), 'error')
-    }
-  }, [currentPath, handleSetStatus])
-
-  // Copy/move a set of paths into dstDir via the batch command (unique dest, no
-  // clobber; server-side), then refresh both panes.
-  const applyTransfer = useCallback(
-    async (dstDir: string, srcPaths: string[], mode: 'copy' | 'move') => {
-      if (!srcPaths.length) return
-      if (isArchivePath(dstDir) || srcPaths.some(isArchivePath)) {
-        handleSetStatus(i18n.t('archive.readOnly'), 'error')
-        return
-      }
-      const res = await transferBatch(srcPaths, dstDir, mode)
-      if (res.applied) handleSetStatus(i18n.t(mode === 'copy' ? 'transfer.done' : 'transfer.moved', { count: res.applied }), 'success')
-      if (res.nonAtomic) handleSetStatus(i18n.t('transfer.nonAtomic'), 'info')
-      if (res.failures.length) handleSetStatus(i18n.t('transfer.failed', { count: res.failures.length }), 'error')
-      const ps = panesRef.current
-      await Promise.all([refreshPane('left', ps.left.path), refreshPane('right', ps.right.path)])
-    },
-    [handleSetStatus, refreshPane],
-  )
-
-  const handleTransfer = useCallback(
-    async (dstDir: string) => {
-      const req = transferReq
-      if (!req) return
-      setTransferReq(null)
-      await applyTransfer(dstDir, req.paths, req.mode)
-    },
-    [transferReq, applyTransfer],
-  )
-
-  // Swap the two panes' directories (paths + loaded entries + selection).
-  const swapPanes = useCallback(() => setPanes((prev) => ({ left: prev.right, right: prev.left })), [])
-
-  // Send the active pane's selection into the other pane's current folder.
-  const sendToOtherPane = useCallback(
-    (mode: 'copy' | 'move') => {
-      const a = panesRef.current[active]
-      const other = active === 'left' ? 'right' : 'left'
-      const dst = panesRef.current[other].path
-      if (!dst) return
-      expandPane(other)
-      void applyTransfer(dst, [...a.selected], mode)
-    },
-    [active, applyTransfer, expandPane],
-  )
-
-  // Drag/drop: transfer dropped source paths into pane `id`'s current folder.
-  const dropIntoPane = useCallback(
-    (id: PaneId, srcPaths: string[], copy: boolean) => {
-      const dst = (panesRef.current[id].path || '').replace(/\/+$/, '')
-      if (!dst || !srcPaths.length) return
-      // Ignore same-pane drops: every source already lives directly in `dst`.
-      const parentOf = (p: string) => p.slice(0, p.lastIndexOf('/')) || '/'
-      const norm = (p: string) => p.replace(/\/+$/, '') || '/'
-      if (srcPaths.every((p) => norm(parentOf(p)) === norm(dst))) return
-      void applyTransfer(dst, srcPaths, copy ? 'copy' : 'move')
-    },
-    [applyTransfer],
-  )
-
-  // Drop onto a specific folder (breadcrumb segment / Go-to item).
-  const dropToDir = useCallback(
-    (dir: string, srcPaths: string[], copy: boolean) => {
-      if (!dir) return
-      void applyTransfer(dir, srcPaths, copy ? 'copy' : 'move')
-    },
-    [applyTransfer],
-  )
 
   // --- sidebar (pinned-sidebar change) ---
   const [sidebarAdd, setSidebarAdd] = useState<{ value: string } | null>(null)
@@ -1476,10 +1351,10 @@ export default function App() {
         }}
         className="flex shrink-0 cursor-default select-none items-center gap-1 border-b border-base-300 py-1.5 pr-2 pl-[82px]"
       >
-        <ToolButton label={t('toolbar.back')} disabled={!backStack.length} onClick={() => goBack()}>
+        <ToolButton label={t('toolbar.back')} disabled={!canGoBack} onClick={() => goBack()}>
           <IconBack />
         </ToolButton>
-        <ToolButton label={t('toolbar.forward')} disabled={!fwdStack.length} onClick={() => goForward()}>
+        <ToolButton label={t('toolbar.forward')} disabled={!canGoForward} onClick={() => goForward()}>
           <IconFwd />
         </ToolButton>
         <ToolButton label={t('toolbar.up')} disabled={isRoot} onClick={() => goUp()}>

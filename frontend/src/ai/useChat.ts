@@ -1,7 +1,7 @@
 /**
  * Chat controller hook (Task 4 of the AI chat plan). Wires the pure chat layer
  * (`chat.ts` parser/validator/prompt builder) to real streaming via
- * `runtime.streamChat` and to the filesystem via the `fs.ts` bridge. Nothing
+ * `runtime.streamChat` and to filesystem mutations via the Rust proposal batch. Nothing
  * the model proposes executes until the user confirms a specific action card.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -10,7 +10,7 @@ import { budgetFiles, renderBudgeted, renderDirListing } from './budget.js'
 import { buildChatPrompt, extractActions, validateChatAction, CANCELLED_SENTINEL, type ChatMessage } from './chat.js'
 import i18n from '../i18n'
 import { isImageName, modelCapabilities, visionGate } from './capabilities.js'
-import { collectFileContents, fs, moveToTrash, writeFile } from './fs.js'
+import { collectFileContents } from './fs.js'
 import { streamChat, type AiFinishMeta, type StreamArgs } from './runtime.js'
 import { addDebugEvent, addDebugLog, updateDebugLog } from './usePlanDebug.js'
 import { proposalFromChatActions } from './proposal.js'
@@ -56,9 +56,6 @@ export function useChat(deps: UseChatDeps) {
   const streamingRef = useRef(false)
   const inFlightActions = useRef<Set<string>>(new Set())
   const { apply: applyProposal } = useAiProposal({
-    fs,
-    writeFile,
-    moveToTrash,
     getContext: () => snapshotContext({ rootPath: depsRef.current.currentPath, entries: depsRef.current.entries, selectedPaths: depsRef.current.selected.map((entry) => entry.path), guardOn: depsRef.current.guardOn, location: depsRef.current.location }),
     contextChangedMessage: i18n.t('ai.contextChanged'),
   })

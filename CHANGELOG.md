@@ -4,6 +4,12 @@ All notable changes to Clive are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows SemVer, with the version defined once in `tauri.conf.json` (build.rs enforces Cargo/package parity). Releases are tagged `vX.Y.Z` (annotated).
 
 ## [Unreleased]
+### Added
+- Conventional Commit-based release command that previews or applies SemVer version bumps across project manifests
+- Added frontend V8 and Rust LLVM coverage commands with local HTML reports and a documented baseline.
+### Fixed
+- Restored Clive-owned synchronous icons with distinct artwork for common file categories; card mode now renders the icon at 76×76 px in its 80×80 px area.
+
 
 ## [1.2.1] - 2026-10-16
 ### Fixed

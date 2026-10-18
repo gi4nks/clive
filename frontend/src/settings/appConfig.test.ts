@@ -14,6 +14,7 @@ import {
   exportConfig,
   resetConfig,
   initAppConfig,
+  subscribe,
 } from '../settings/appConfig'
 
 beforeEach(() => {
@@ -39,6 +40,23 @@ describe('appConfig basics', () => {
   it('persists to localStorage and is readable', () => {
     setAppConfig({ theme: 'dracula' })
     expect(JSON.parse(localStorage.getItem('fm.config')!).theme).toBe('dracula')
+  })
+
+  it('persists pane preferences and notifies active subscribers', () => {
+    const listener = vi.fn()
+    const unsubscribe = subscribe(listener)
+
+    setAppConfig({ view: 'grid', paneCollapsed: { left: true, right: false } })
+
+    expect(getAppConfig()).toMatchObject({ view: 'grid', paneCollapsed: { left: true, right: false } })
+    expect(JSON.parse(localStorage.getItem('fm.config')!)).toMatchObject({
+      view: 'grid', paneCollapsed: { left: true, right: false },
+    })
+    expect(listener).toHaveBeenCalledOnce()
+
+    unsubscribe()
+    setAppConfig({ theme: 'nord' })
+    expect(listener).toHaveBeenCalledOnce()
   })
 })
 

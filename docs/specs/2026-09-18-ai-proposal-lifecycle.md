@@ -29,14 +29,22 @@
 - [x] Rust blocks absent /Volumes mounts before write/restore paths can recreate parents
 - [x] Plan/trash journals persist mount source and filesystem identity; recovery rejects mismatches
 - [x] Shared proposal controller refreshes volume information after confirmation, before execution
+- [x] Chat and quick-action proposals use the Rust `apply_plan`/`undo_plan` batch journal; generated files are created exclusively and undo checks their SHA-256 before removal
 - [ ] Validate interrupted SMB copy/trash/restore on disposable network fixtures
 
-Release verification: 379 frontend tests and 49 Rust tests pass. A real SMB
-interruption drill remains unperformed. Mount checks occur before operations;
+Local verification on 2026-10-18: 384 frontend tests and 51 Rust tests pass;
+TypeScript check, `cargo check`, `make build`, and DMG checksum verification
+pass. A real SMB interruption drill remains unperformed. Mount checks occur before operations;
 they do not provide a filesystem transaction or eliminate races during a network
 failure. A remount with changed filesystem identity can conservatively block
 recovery even when the original server is back. Legacy trash entries without
 identity are not automatically restored onto mounted remote volumes.
+
+The shared proposal controller now sends every operation through the Rust
+batch engine. The former frontend filesystem executor and direct
+`write_text_file` command have been removed from this path. `createFile` uses
+exclusive creation and a content-hash inverse so undo preserves later user
+edits. Partial failures remain in the same Rust journal for retry.
 
 ## Intent
 

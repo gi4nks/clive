@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Clive — Architecture Review</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <style>
+    :root{--ink:#17212b;--teal:#0f766e;--amber:#b45309;--rose:#be123c;--paper:#f8faf9}
+    body{background:var(--paper);color:var(--ink);font-family:Inter,ui-sans-serif,system-ui,sans-serif}
+    h1,h2,h3,.serif{font-family:Georgia,Cambria,serif}
+    .module-box{border:1px solid #cbd5e1;border-radius:1rem;background:white;padding:1rem;box-shadow:0 8px 24px #0f172a0a}
+    .seam-line{border-left:2px dashed #0f766e;padding-left:1rem}
+    .diagram-arrow{color:#64748b;font-size:1.4rem;font-weight:700}
+    .mermaid{background:#fff;border:1px solid #e2e8f0;border-radius:1rem;padding:1rem;overflow:auto}
+    .impact td,.impact th{padding:.65rem .8rem;border-bottom:1px solid #e2e8f0;text-align:left}
+    .impact th{color:#475569;font-size:.75rem;text-transform:uppercase;letter-spacing:.08em}
+    code{background:#e2e8f0;border-radius:.25rem;padding:.08rem .3rem;font-size:.9em}
+    @media(max-width:640px){.before-after{grid-template-columns:1fr!important}.diagram-arrow{transform:rotate(90deg)}}
+  </style>
+</head>
+<body>
+  <header class="bg-slate-950 text-white">
+    <div class="mx-auto max-w-6xl px-6 py-14">
+      <p class="text-sm uppercase tracking-[.22em] text-teal-300">Staff architecture review · 18 October 2026</p>
+      <h1 class="mt-4 text-5xl">Clive</h1>
+      <p class="mt-2 text-slate-300">A macOS dual-pane file manager built with Tauri 2, Rust, React and TypeScript.</p>
+      <div class="mt-8 grid gap-3 md:grid-cols-2">
+        <p class="rounded-xl bg-white/10 p-4"><b class="text-teal-300">Largest strength</b><br>Filesystem authority and safety checks live in Rust, while the UI consumes focused native commands.</p>
+        <p class="rounded-xl bg-white/10 p-4"><b class="text-rose-300">Largest flaw</b><br>The app shell concentrates too much navigation and workflow state; Rust filesystem capabilities also span broad concerns.</p>
+      </div>
+      <div class="mt-6 flex flex-wrap gap-3 text-xs">
+        <span class="rounded-full bg-slate-700 px-3 py-1">Module · bounded responsibility</span>
+        <span class="rounded-full bg-teal-800 px-3 py-1">Deep Module · high leverage behind a small interface</span>
+        <span class="rounded-full bg-rose-800 px-3 py-1">Leakage · details cross a Seam</span>
+        <span class="rounded-full border border-teal-300 px-3 py-1">Seam · replaceable dependency boundary</span>
+      </div>
+    </div>
+  </header>
+  <main class="mx-auto max-w-6xl space-y-14 px-6 py-12">
+    <section>
+      <h2 class="text-3xl">Current Posture</h2>
+      <p class="mt-3 max-w-4xl leading-7">Clive has a sound desktop architecture: React owns presentation and interaction; Rust owns filesystem effects, volume handling, trash, archive extraction, and the durable undo journal; Tauri commands form the native boundary. AI is optional and provider access is isolated behind a local gateway. OpenSpec specifications give behavior a canonical home. The current direction favors safety and explicit review over broad automation.</p>
+      <div class="mt-6 grid gap-4 md:grid-cols-3">
+        <div class="module-box"><div class="text-3xl font-semibold">1,966</div><div class="text-sm text-slate-600">lines in <code>frontend/src/App.tsx</code></div></div>
+        <div class="module-box"><div class="text-3xl font-semibold">1,501</div><div class="text-sm text-slate-600">lines in Rust <code>commands/filesystem.rs</code></div></div>
+        <div class="module-box"><div class="text-3xl font-semibold">52</div><div class="text-sm text-slate-600">frontend test files beside source</div></div>
+      </div>
+      <p class="mt-4 text-sm text-slate-600">The metrics describe source shape, not quality scores. The P0 migration was verified with the frontend suite, Rust suite, TypeScript check, Rust formatting check, and release bundle build. The working tree contains many pre-existing changes, which were preserved. CodeGraph initialization reported that the parent monorepo was already initialized; its queries failed with a locked database, so source and spec inspection provide the evidence here.</p>
+    </section>
+    <section>
+      <h2 class="text-3xl">Runtime Map</h2>
+      <p class="mt-3 text-slate-600">Solid teal nodes are high leverage modules; dashed rose nodes show current Leakage or concentrated orchestration.</p>
+      <div class="mermaid mt-5">flowchart LR
+        UI[React panes and previews]:::module --> SHELL[App shell state and workflows]:::leak
+        SHELL --> API[Typed Tauri invoke wrappers]:::seam
+        API --> CMD[Tauri command registry]:::module
+        CMD --> FS[Filesystem and volume operations]:::deep
+        CMD --> TRASH[Trash journal]:::deep
+        CMD --> PLAN[Rust plan executor and undo journal]:::deep
+        CMD --> ZIP[ZIP reader and extractor]:::module
+        UI --> AI[AI proposals, chat and plan review]:::module
+        AI --> API
+        API --> PLAN
+        AI --> GATE[Local AI gateway]:::deep
+        GATE --> PROVIDER[Configured local or cloud provider]:::module
+        classDef module fill:#e2e8f0,stroke:#64748b,color:#17212b,stroke-width:1px
+        classDef deep fill:#115e59,stroke:#0f766e,color:#fff,stroke-width:2px
+        classDef seam fill:#ecfeff,stroke:#0f766e,color:#134e4a,stroke-width:2px
+        classDef leak fill:#fff1f2,stroke:#be123c,color:#881337,stroke-width:2px,stroke-dasharray:6 4</div>
+    </section>
+    <section>
+      <h2 class="text-3xl">Candidates / Opportunities for Deepening</h2>
+      <p class="mt-3 text-slate-600">These are bounded changes that reduce observed Leakage. They are not a proposal to rewrite the app.</p>
+
+      <article class="mt-8 space-y-4">
+        <div class="flex flex-wrap items-center gap-3"><h3 class="text-2xl">1. Unify AI proposal mutations behind one Rust journal</h3><span class="rounded-full bg-teal-100 px-3 py-1 text-sm text-teal-900">Implemented · P0 delivered</span></div>
+        <p><b>Evidence:</b> Chat, quick actions, and plan review now call <code>api.ts</code> → <code>commands/plan.rs</code> (<code>apply_plan</code>/<code>undo_plan</code>). The duplicate frontend executor and direct <code>write_text_file</code> command have been removed from the AI path. Rust persists inverses under <code>~/.clive/plan-journal</code>, checks mounted-volume identity, and now journals <code>createFile</code> using exclusive creation plus a SHA-256 checked inverse.</p>
+        <p><b>Problem:</b> Before this change, shared proposal orchestration still executed common file operations through TypeScript adapters and handled file creation/trash outside the durable Rust journal. That left undo semantics split across languages.</p>
+        <p><b>Solution:</b> The shared proposal controller normalizes operations and submits one batch through the Tauri Seam. Proposal creation and risk-specific review remain UI responsibilities; validation, path guards, execution order, journaling, progress, and undo remain Rust responsibilities.</p>
+        <p><b>Interface:</b> batch identity, typed operations, progress, structured outcome, and durable undo reference. <b>Implementation:</b> Rust validation, mount checks, operation ordering, journaling, retryable partial undo, and content-checked generated-file removal. <b>Seam:</b> Tauri command API. <b>Leverage:</b> one execution policy for chat, quick actions, and plans. <b>Tests:</b> 384 frontend tests and 51 Rust tests pass, including content-preserving file undo. <b>Locality:</b> execution policy sits with filesystem authority.</p>
+        <div class="before-after grid grid-cols-[1fr_auto_1fr] items-center gap-3">
+          <div class="module-box border-rose-200"><b class="text-rose-800">Before · split ownership</b><p class="mt-2 text-sm">Chat / quick actions → TS executor or direct file commands<br>Plan panel → Rust journal</p></div><div class="diagram-arrow">→</div><div class="module-box border-teal-300"><b class="text-teal-900">After · one mutation seam</b><p class="mt-2 text-sm">Chat / quick actions / plan review → normalized batch → Rust executor + durable journal</p></div>
+        </div>
+        <table class="impact w-full border-collapse"><thead><tr><th>Leverage</th><th>Locality</th><th>Tests</th></tr></thead><tbody><tr><td>One authoritative safety and recovery policy</td><td>Validation and execution remain beside native filesystem effects</td><td>One shared contract covers AI origins and partial outcomes</td></tr></tbody></table>
+      </article>
+
+      <article class="mt-10 space-y-4">
+        <div class="flex flex-wrap items-center gap-3"><h3 class="text-2xl">2. Split the app shell by workflow ownership</h3><span class="rounded-full bg-teal-100 px-3 py-1 text-sm text-teal-900">Delivered · P1</span></div>
+        <p><b>Evidence:</b> <code>frontend/src/App.tsx</code> was 1,966 lines at review time and remains a large shell. It composes pane navigation and sizing, selection, transfers, modal state, settings, previews, chat, AI planning, activity/debug views, and plan undo. It imports both low-level filesystem commands and many feature surfaces.</p>
+        <p><b>Problem:</b> The app shell is an orchestration module with too many reasons to change. Adding a file workflow can couple layout, focus state, error messaging, and AI state. The shell is not a Deep Module because its interface is large and its implementation details are visible throughout.</p>
+        <p><b>Solution:</b> Delivered workflow ownership in <code>usePaneNavigation</code> (path transitions and per-pane history), <code>useTransferWorkflow</code> (clipboard state, copy/cut/paste, batch transfers, pane refresh, swapping, and drag/drop), and <code>usePreviewLayout</code> (expanded preview mode and pane activation transitions). AI coordination already uses dedicated hooks. <code>App.tsx</code> supplies filesystem listing, write authorization, status, and UI callbacks, and composes the workflows. Context-menu construction, keyboard dispatch, and dialogs remain shell-owned UI composition.</p>
+        <p><b>Interface:</b> workflow state plus explicit commands/events. <b>Implementation:</b> local transitions and side effects. <b>Seam:</b> composed React controller props/hooks. <b>Leverage:</b> change a workflow without editing the full shell. <b>Tests:</b> workflow tests avoid bootstrapping the whole app. <b>Locality:</b> related state, effects, and UI live together.</p>
+        <div class="before-after grid grid-cols-[1fr_auto_1fr] items-center gap-3"><div class="module-box border-rose-200"><b class="text-rose-800">Before</b><p class="mt-2 text-sm">One shell owns panes + transfers + dialogs + AI + preview state.</p></div><div class="diagram-arrow">→</div><div class="module-box border-teal-300"><b class="text-teal-900">After</b><p class="mt-2 text-sm">Shell composes PaneSession, Transfer, Preview and AI workspace modules.</p></div></div>
+        <table class="impact w-full border-collapse"><thead><tr><th>Leverage</th><th>Locality</th><th>Tests</th></tr></thead><tbody><tr><td>Lower coupling for new workflows</td><td>Each state machine stays near its user surface</td><td>Focused transition tests for pane and transfer behavior</td></tr></tbody></table>
+      </article>
+
+      <article class="mt-10 space-y-4">
+        <div class="flex flex-wrap items-center gap-3"><h3 class="text-2xl">3. Give filesystem capabilities smaller Rust modules</h3><span class="rounded-full bg-teal-100 px-3 py-1 text-sm text-teal-900">Delivered · P1 · Locality</span></div>
+        <p><b>Evidence:</b> at review time, <code>src-tauri/src/commands/filesystem.rs</code> spanned 1,501 lines and combined Finder tags/xattrs, native icons, path protection, listing, metadata, mount identity, transfers, volumes, Quick Look, and terminal launch. The Tauri command list remains registered centrally in <code>main.rs</code>.</p>
+        <p><b>Problem:</b> Several platform capabilities shared a file and broad helpers, making safety changes difficult to localize and macOS behavior hard to isolate.</p>
+        <p><b>Solution:</b> Delivered capability modules for <code>path_safety</code>, <code>finder_tags</code>, <code>listing</code>, <code>metadata</code>, <code>macos</code>, <code>transfers</code>, <code>preview</code>, <code>desktop</code>, <code>tags</code>, and <code>volumes</code>. <code>filesystem.rs</code> is now the namespace and shared safety-test home. Tauri command registration points directly to command implementations; Rust callers import the capability they use.</p>
+        <p><b>Interface:</b> capability functions over paths and typed outcomes. <b>Implementation:</b> OS calls and safety policy remain in Rust. <b>Seam:</b> Tauri adapters are registered directly from each capability; path and mount guards remain explicit shared helpers. <b>Tradeoff:</b> more module files and explicit imports in exchange for locality; no new abstraction layer or runtime behavior. <b>Tests:</b> the unchanged guard, preview, volume, plan, trash, and archive coverage passes: 51 Rust tests.</p>
+        <div class="before-after grid grid-cols-[1fr_auto_1fr] items-center gap-3"><div class="module-box border-rose-200"><b class="text-rose-800">Before</b><p class="mt-2 text-sm">One large command module spans metadata, mounts, transfers, safety, and OS integration.</p></div><div class="diagram-arrow">→</div><div class="module-box border-teal-300"><b class="text-teal-900">After</b><p class="mt-2 text-sm">Small command adapters delegate to capability modules with explicit shared guards.</p></div></div>
+        <table class="impact w-full border-collapse"><thead><tr><th>Leverage</th><th>Locality</th><th>Tests</th></tr></thead><tbody><tr><td>Platform details become replaceable</td><td>Mount, metadata, and file operations are cohesive</td><td>Pure path, parsing, and mount-identity cases stay isolated</td></tr></tbody></table>
+      </article>
+
+      <article class="mt-10 space-y-4">
+        <div class="flex flex-wrap items-center gap-3"><h3 class="text-2xl">4. Make the Tauri boundary a checked contract</h3><span class="rounded-full bg-teal-100 px-3 py-1 text-sm text-teal-900">Delivered · P1 · Seam</span></div>
+        <p><b>Evidence:</b> all 43 commands were registered in <code>main.rs</code>, while <code>frontend/src/api.ts</code> separately maintained command names, payloads, and result types. The provider settings DTO also declared <code>device</code> in TypeScript while Rust returned untyped JSON without that field.</p>
+        <p><b>Solution:</b> <code>TauriCommandMap</code> now types every wrapper. <code>scripts/check-tauri-contract.mjs</code> compares the map with <code>generate_handler!</code>, Rust command parameters and return types, and the fields of DTOs used by command results. The frontend build and tests run this check. Provider settings and build metadata now use serializable Rust DTOs; command rejections share a stable <code>code</code>/<code>command</code>/<code>message</code> error shape while preserving the original message.</p>
+        <p><b>Tradeoffs:</b> the map is maintained in TypeScript rather than generated, so the checker protects command names, argument keys, return type names, and required DTO fields. Additive Rust DTO fields remain allowed for wire compatibility and journal metadata. UI presentation types stay in the frontend. <b>Tests:</b> contract checker plus wrapper tests; Rust and frontend suites run in validation.</p>
+        <div class="before-after grid grid-cols-[1fr_auto_1fr] items-center gap-3"><div class="module-box border-rose-200"><b class="text-rose-800">Before</b><p class="mt-2 text-sm">Rust command + registration + manually mirrored TS name, args, and result.</p></div><div class="diagram-arrow">→</div><div class="module-box border-teal-300"><b class="text-teal-900">After</b><p class="mt-2 text-sm">Rust registration and signatures are checked against typed invoke wrappers before build/test.</p></div></div>
+        <table class="impact w-full border-collapse"><thead><tr><th>Leverage</th><th>Locality</th><th>Tests</th></tr></thead><tbody><tr><td>Fewer runtime-only command mismatches</td><td>Wire shapes have one canonical definition</td><td>Serialization and wrapper contracts fail early</td></tr></tbody></table>
+      </article>
+
+      <article class="mt-10 space-y-4">
+        <div class="flex flex-wrap items-center gap-3"><h3 class="text-2xl">5. Consider a first-class file search workflow</h3><span class="rounded-full bg-amber-100 px-3 py-1 text-sm text-amber-950">Explored · Speculative · P2</span></div>
+        <p><b>Evidence:</b> File panes expose a local query/filter and Clive has a quick launcher, tags, and Finder reveal. The inspected command surface has no recursive search or content-index service. This is a product opportunity inferred from current capabilities, not a documented commitment.</p>
+        <p><b>Problem:</b> Browsing remains directory-centric; discovering a file outside current pane contents requires navigation or Finder. Any recursive scan added directly to the UI would risk blocking and inconsistent permission/error handling.</p>
+        <p><b>Solution:</b> Keep the current status-bar query as an in-pane name filter. Add a separate Search Files mode backed by a native, on-demand traversal. It accepts explicit roots, streams batches, supports cancellation, and reports whether the result set is partial. Do not introduce a persistent index in the first slice.</p>
+        <p><b>Interface:</b> start(query, roots, options) → search ID; result batches and terminal status carry that ID; cancel(search ID). <b>Implementation:</b> Rust owns traversal and policy; React owns query, scope, progress, and result presentation. <b>Seam:</b> typed Tauri commands plus typed search events, following the existing plan-progress pattern. <b>Leverage:</b> bounded discovery can later support saved scopes without coupling traversal to panes. <b>Tests:</b> deterministic traversal, limits, mount loss, and cancellation. <b>Locality:</b> keep search rules in a dedicated Rust capability and the search view in its own frontend workflow.</p>
+        <div class="module-box border-amber-200 bg-amber-50/50">
+          <h4 class="text-lg font-semibold">Exploration decision record · proposed first slice</h4>
+          <p class="mt-2 text-sm leading-6"><b>DR-SEARCH-01 · Recommend an ephemeral filename scan.</b> This is a design recommendation, not an approved implementation commitment. Launch a dedicated Search Files mode (⌘⇧F); default its root to the active pane's current directory. Let the user add roots from Home, pinned folders, or mounted volumes. Show root chips so the active scope stays visible. Keep content indexing and saved searches out of this slice.</p>
+          <div class="mt-4 grid gap-3 md:grid-cols-2">
+            <div class="rounded-lg border border-teal-200 bg-white p-4"><b>Initial traversal policy</b><ul class="mt-2 list-disc space-y-1 pl-5 text-sm"><li>Case-insensitive substring matching on file and folder names only.</li><li>Do not follow symbolic links; skip hidden entries by default, with an explicit include-hidden option.</li><li>Reject protected system roots; validate volume roots are mounted and stop when their mount identity changes.</li><li>Bound depth, visited entries, elapsed time, and returned results. Suggested starting caps: depth 12, 10,000 visited entries, 5 seconds, 500 results.</li><li>Report truncation/timeout as partial results with the reason; never present a partial scan as complete.</li></ul></div>
+            <div class="rounded-lg border border-rose-200 bg-white p-4"><b>Failure and interaction policy</b><ul class="mt-2 list-disc space-y-1 pl-5 text-sm"><li>Unreadable folders are skipped and counted; root errors are shown to the user.</li><li>Cancel on Escape, closing Search Files, or replacing the active query; each result event is scoped by search ID.</li><li>Opening a result navigates the active pane to its parent and selects it; preview and Finder reveal use existing actions.</li><li>Keep results in memory only. A future index must be a separately reviewed product decision with storage, refresh, and privacy rules.</li></ul></div>
+          </div>
+        </div>
+        <div class="grid gap-3 md:grid-cols-3">
+          <div class="module-box"><b>Option A · synchronous invoke</b><p class="mt-2 text-sm">Smallest command surface, but the UI sees no intermediate results and cannot reliably interrupt a long network-volume scan. Poor fit for the stated cancellation requirement.</p></div>
+          <div class="module-box border-teal-300"><b>Option B · job + event batches</b><p class="mt-2 text-sm">Recommended. A Rust worker traverses off the UI thread; start/cancel commands and ID-scoped result/status events provide responsive streaming and bounded lifecycle ownership.</p></div>
+          <div class="module-box"><b>Option C · persistent index</b><p class="mt-2 text-sm">Fast repeated queries, but adds database lifecycle, stale-result handling, filesystem watchers/permissions, exclusions, and privacy expectations before Clive has validated demand.</p></div>
+        </div>
+        <p><b>Limits and product tradeoff:</b> fixed caps make resource use predictable but can miss deeper or later results. The UI must show visited/result counts and why traversal stopped, offer “Search deeper” as a follow-up scope expansion, and preserve the completed partial results. Caps should be tuned from local-folder and SMB measurements before release. A name-only first slice does not replace Finder content search.</p>
+        <p><b>Evidence:</b> <code>frontend/src/widgets.tsx:117-146</code> exposes the existing query field; <code>frontend/src/App.tsx:523-541</code> filters only the already-loaded entries by name per pane. <code>src-tauri/src/commands/filesystem/listing.rs:19-64</code> lists one directory, excluding hidden entries by default. Commands are registered in <code>src-tauri/src/main.rs:57-100</code>; the typed frontend map is <code>frontend/src/api.ts:51-95</code>, with event subscription for <code>plan-progress</code> at lines 210-218. No recursive search, index, or search specification exists in the inspected command/spec surface.</p>
+        <p><b>Implementation boundary if approved:</b> add a dedicated Rust search capability, command DTOs and registrations, typed command/event wrappers, and a frontend search workflow. Keep traversal policy independent from current pane filters. Existing Tauri event permissions already allow listen/unlisten through <code>capabilities/default.json</code>. The checked Tauri contract currently covers registered command names, arguments, Rust signatures, and DTOs; event names and payloads would need their own checked contract.</p>
+        <div class="before-after grid grid-cols-[1fr_auto_1fr] items-center gap-3"><div class="module-box border-rose-200"><b class="text-rose-800">Before</b><p class="mt-2 text-sm">Filter visible entries in one directory, then manually browse elsewhere.</p></div><div class="diagram-arrow">→</div><div class="module-box border-teal-300"><b class="text-teal-900">After</b><p class="mt-2 text-sm">Optional bounded search returns cancellable results across chosen roots.</p></div></div>
+        <table class="impact w-full border-collapse"><thead><tr><th>Leverage</th><th>Locality</th><th>Tests</th></tr></thead><tbody><tr><td>Faster discovery across folders</td><td>Search semantics separate from pane state</td><td>Traversal, exclusions, and cancellation are deterministic</td></tr></tbody></table>
+      </article>
+    </section>
+    <section class="rounded-2xl bg-teal-950 p-7 text-white">
+      <p class="text-sm uppercase tracking-[.2em] text-teal-200">Top Recommendation · next move</p>
+      <h2 class="mt-2 text-3xl">Explore bounded native file search</h2>
+      <p class="mt-4 max-w-4xl leading-7 text-teal-50">The P0 mutation seam and all three P1 architecture changes are delivered. Bounded native file search now has a proposed first-slice decision record: ephemeral filename scanning, explicit roots, cancellation, streamed partial results, and no persistent index. Product approval is still needed before implementation; this remains P2.</p>
+    </section>
+    <section>
+      <h2 class="text-3xl">Usage Modes</h2>
+      <div class="mt-5 grid gap-4 md:grid-cols-2">
+        <div class="module-box"><h3 class="text-xl">Navigate and transfer</h3><p class="mt-2 text-sm leading-6">Dual panes, history, pinned Navigator, drag transfers, clipboard, and move-to-other-pane. <code>frontend/src/App.tsx</code>, <code>frontend/src/FilePane.tsx</code>, <code>src-tauri/src/commands/clipboard.rs</code>.</p></div>
+        <div class="module-box"><h3 class="text-xl">Inspect and preview</h3><p class="mt-2 text-sm leading-6">Images, media, PDF, text/Markdown, archives, and file metadata. <code>frontend/src/PreviewPanel.tsx</code>, <code>src-tauri/src/commands/archives.rs</code>.</p></div>
+        <div class="module-box"><h3 class="text-xl">Manage files safely</h3><p class="mt-2 text-sm leading-6">Rename, trash/restore, tags, protected-location checks, mounted-volume identity, and durable AI plan undo. <code>src-tauri/src/commands/filesystem.rs</code>, <code>src-tauri/src/commands/plan.rs</code>.</p></div>
+        <div class="module-box"><h3 class="text-xl">Use optional AI</h3><p class="mt-2 text-sm leading-6">Provider-backed chat, summaries, and reviewed organization proposals through Wise and the local gateway. <code>frontend/src/ai/</code>, <code>src-tauri/src/gateway.rs</code>.</p></div>
+      </div>
+      <div class="mt-6 grid gap-4 md:grid-cols-2">
+        <div class="rounded-xl border border-teal-300 bg-teal-50 p-5"><h3 class="text-lg font-semibold text-teal-950">Ready for...</h3><p class="mt-2 text-sm leading-6">Daily local file management with a dual-pane workflow, preview, Finder tags, mounted-volume awareness, and reviewed/undoable batch organization. The Rust command layer is a strong base for safety-sensitive desktop work.</p></div>
+        <div class="rounded-xl border border-amber-300 bg-amber-50 p-5"><h3 class="text-lg font-semibold text-amber-950">Still requires integration...</h3><p class="mt-2 text-sm leading-6">A single mutation and recovery path for every proposal origin, checked cross-language Tauri contracts, clearer workflow ownership in the app shell, and optional recursive search if cross-folder discovery is a core use case. These are recommendations, not claims that features are already implemented.</p></div>
+      </div>
+    </section>
+  </main>
+  <footer class="border-t border-slate-200 bg-white"><div class="mx-auto max-w-6xl px-6 py-8 text-sm text-slate-600">Created: 2026-10-18 · Updated: 2026-10-18 · Working tree: dirty; pre-existing changes preserved · Static source and specification review; tests/build not run.</div></footer>
+  <script>mermaid.initialize({startOnLoad:true,theme:'base',themeVariables:{fontFamily:'Inter, ui-sans-serif, system-ui',primaryTextColor:'#17212b'}});</script>
+</body>
+</html>

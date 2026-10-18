@@ -4,8 +4,6 @@ import {
   uniqueName,
   validateRenames,
   basename,
-  undoMove,
-  undoRename,
 } from './safety'
 
 describe('validateNewName (mirrors Rust rename rules)', () => {
@@ -25,7 +23,6 @@ describe('validateNewName (mirrors Rust rename rules)', () => {
     expect(r.name).toBe('invoice-acme.pdf')
   })
 })
-
 describe('uniqueName (backend-style suffixes)', () => {
   it('returns the name when free', () => {
     expect(uniqueName('a.txt', new Set(['b.txt']))).toBe('a.txt')
@@ -86,22 +83,5 @@ describe('validateRenames (batch)', () => {
     )
     expect(res[0].to).toBe('y.txt')
     expect(res[1].to).toBe('x.txt')
-  })
-})
-
-describe('undo inverses', () => {
-  it('undoRename stores the restore name', () => {
-    expect(undoRename('/d/new.txt', 'old.txt')).toEqual({
-      kind: 'rename',
-      path: '/d/new.txt',
-      restoreName: 'old.txt',
-    })
-  })
-  it('undoMove inverts from/to', () => {
-    expect(undoMove('/d/sub/a.txt', '/d/a.txt')).toEqual({
-      kind: 'move',
-      from: '/d/sub/a.txt',
-      to: '/d/a.txt',
-    })
   })
 })

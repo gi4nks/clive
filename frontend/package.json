@@ -5,10 +5,12 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "npm run check:tauri-contract && tsc -b && vite build",
     "lint": "oxlint",
+    "check:tauri-contract": "node ../scripts/check-tauri-contract.mjs",
     "preview": "vite preview",
-    "test": "vitest run",
+    "test": "npm run check:tauri-contract && vitest run",
+    "test:coverage": "npm run check:tauri-contract && vitest run --coverage",
     "test:watch": "vitest"
   },
   "dependencies": {
@@ -36,6 +38,7 @@
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.4",
     "@vitejs/plugin-react": "^6.1.0",
+    "@vitest/coverage-v8": "^4.1.11",
     "jsdom": "^25.0.1",
     "oxlint": "^1.79.0",
     "tailwindcss": "^4.3.3",

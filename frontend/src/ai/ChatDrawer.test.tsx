@@ -200,4 +200,46 @@ describe('ChatDrawer', () => {
     expect(screen.queryByText('Copiato!')).not.toBeInTheDocument()
     vi.useRealTimers()
   })
+
+  it('submits trimmed text by button or command-enter, but ignores whitespace and active streams', () => {
+    const ai = makeAI()
+    render(<ChatDrawer open onClose={vi.fn()} ai={ai as never} />)
+    const input = screen.getByRole('textbox')
+    const send = screen.getByRole('button', { name: 'chat.send' })
+    expect(send).toBeDisabled()
+    fireEvent.change(input, { target: { value: '   ' } })
+    expect(send).toBeDisabled()
+    fireEvent.change(input, { target: { value: '  organize files  ' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+    expect(ai.send).not.toHaveBeenCalled()
+    fireEvent.keyDown(input, { key: 'Enter', ctrlKey: true })
+    expect(ai.send).toHaveBeenCalledWith('organize files')
+    expect(input).toHaveValue('')
+  })
+
+  it('removes attached files and opens activity from the header', () => {
+    const onOpenActivity = vi.fn()
+    const ai = makeAI({ addedFiles: [{ name: 'notes.txt', path: '/tmp/notes.txt' }] })
+    render(<ChatDrawer open onClose={vi.fn()} ai={ai as never} onOpenActivity={onOpenActivity} />)
+    fireEvent.click(screen.getByRole('button', { name: 'chat.removeFile' }))
+    expect(ai.removeAdded).toHaveBeenCalledWith('/tmp/notes.txt')
+    fireEvent.click(screen.getByRole('button', { name: 'chat.activity' }))
+    expect(onOpenActivity).toHaveBeenCalledOnce()
+  })
+
+  it('offers plan review for actions that require a plan and cancel while planning', () => {
+    const onCancelPlan = vi.fn()
+    const ai = makeAI({
+      messages: [{ role: 'assistant', content: 'review', actions: [{ type: 'organize', file: '/a', dstFolder: '/sorted' }] }],
+      validateAction: vi.fn(() => ({ ok: true, requiresPlan: true })),
+    })
+    const onCreatePlan = vi.fn()
+    const { rerender } = render(<ChatDrawer open onClose={vi.fn()} ai={ai as never} onCreatePlan={onCreatePlan} />)
+    fireEvent.click(screen.getByRole('button', { name: 'chat.workspace.reviewPlan' }))
+    expect(ai.applyAction).toHaveBeenCalledWith(0, 0)
+    rerender(<ChatDrawer open onClose={vi.fn()} ai={ai as never} onCreatePlan={onCreatePlan} planBusy planElapsed={12} onCancelPlan={onCancelPlan} />)
+    fireEvent.click(screen.getByRole('button', { name: 'plan.cancel' }))
+    expect(onCancelPlan).toHaveBeenCalledOnce()
+    expect(screen.getByText('12s')).toBeInTheDocument()
+  })
 })

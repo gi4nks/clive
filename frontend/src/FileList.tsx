@@ -3,7 +3,6 @@ import { useTranslation } from 'react-i18next'
 import { formatDate, formatSize, kindOf, type FileEntry } from './api'
 import { ChildCountBadge } from './ChildCountBadge'
 import { FileIcon } from './FileIcon'
-import { loadNativeIcons } from './nativeFileIcons'
 import { getAppConfig, useAppConfig } from './settings/appConfig'
 import { isArchivePath } from './archivePath'
 import { clampWidth, fitColWidths, COL_MIN, COL_MAX } from './resize'
@@ -110,9 +109,6 @@ export function FileList({
   const { name: wName, size: wSize } = cfg.colWidths[paneId]
   const listRef = useRef<HTMLDivElement>(null)
 
-  useEffect(() => {
-    void loadNativeIcons(files)
-  }, [files])
   const [avail, setAvail] = useState(0)
   useEffect(() => {
     const el = listRef.current
@@ -282,8 +278,8 @@ export function FileList({
                       : 'border-transparent hover:bg-base-200:bg-base-300 focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-neutral-900:ring-offset-neutral-950'
                   }`}
                 >
-                  <div className="flex h-14 w-14 items-center justify-center rounded-lg bg-base-200">
-                    <div className="scale-[1.5]"><FileIcon entry={file} /></div>
+                  <div className="flex h-20 w-20 items-center justify-center rounded-lg bg-base-200">
+                    <FileIcon entry={file} size="card" />
                   </div>
                   <span className="max-w-full truncate text-center text-xs font-medium leading-tight">{file.name}</span>
                   {file.tags?.length ? <span className="flex h-2.5 items-center gap-1" aria-label={t('tags.itemTags', { tags: file.tags.map((tag) => tag.name).join(', ') })}>
@@ -298,7 +294,7 @@ export function FileList({
           </div>
           }
         </div>
-        <div className="sr-only">{kindOf(files[0])}</div>
+        {files[0] && <div className="sr-only">{kindOf(files[0])}</div>}
       </div>
     )
   }

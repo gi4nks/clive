@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <meta name="description" content="Evidence-based engineering, testing, distribution, and open-source adoption audit for Clive.">
+  <title>Clive — Engineering and Adoption Audit</title>
+  <style>
+    :root{color-scheme:light dark;--bg:#f3f5f8;--surface:#fff;--surface2:#f7f8fa;--text:#17202b;--muted:#5c6876;--line:#dce2e9;--blue:#2463d3;--blueSoft:#eaf1ff;--green:#176b48;--greenSoft:#e7f5ed;--amber:#855600;--amberSoft:#fff4d8;--red:#a33434;--redSoft:#fdeaea;--shadow:0 12px 32px #16223112}
+    @media(prefers-color-scheme:dark){:root{--bg:#10141a;--surface:#191f27;--surface2:#202832;--text:#e9eef5;--muted:#a7b3c2;--line:#313b47;--blue:#8db4ff;--blueSoft:#202f4b;--green:#8dd9b1;--greenSoft:#1b352a;--amber:#f0c66b;--amberSoft:#3c3019;--red:#ff9b9b;--redSoft:#402323;--shadow:0 12px 32px #0003}}
+    *{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:var(--bg);color:var(--text);font:16px/1.62 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}a{color:var(--blue);text-underline-offset:.15em}code,pre,.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.91em}.hero{padding:58px 24px 44px;color:#f4f7ff;background:radial-gradient(ellipse at 80% 5%,#4267a2 0,transparent 42%),linear-gradient(135deg,#111a29,#203756 60%,#233c5e)}.hero-inner,main,footer{width:min(1120px,calc(100% - 40px));margin:auto}.eyebrow{color:#bdd1f2;font-size:.78rem;font-weight:750;letter-spacing:.15em;text-transform:uppercase}h1{max-width:900px;margin:10px 0;font-size:clamp(2.3rem,6vw,4.1rem);line-height:1.04;letter-spacing:-.045em}.hero p{max-width:820px;color:#d6e0ef;font-size:1.1rem}.meta{display:flex;flex-wrap:wrap;gap:9px;margin-top:22px}.pill{padding:5px 10px;border:1px solid #ffffff35;border-radius:999px;color:#eff5ff;font-size:.82rem}main{padding:28px 0 70px}.layout{display:grid;grid-template-columns:225px minmax(0,1fr);gap:26px;align-items:start}nav,section,.card{border:1px solid var(--line);border-radius:16px;background:var(--surface);box-shadow:var(--shadow)}nav{position:sticky;top:16px;padding:18px}nav strong{display:block;margin-bottom:8px}nav a{display:block;padding:4px 0;color:var(--muted);font-size:.88rem;text-decoration:none}nav a:hover{color:var(--blue)}article{min-width:0}section{margin-bottom:18px;padding:clamp(20px,4vw,34px);scroll-margin-top:18px}h2{margin:0 0 16px;font-size:1.52rem;line-height:1.25;letter-spacing:-.02em}h3{margin:24px 0 8px;font-size:1.08rem}p{margin:9px 0}ul,ol{padding-left:1.35rem}li{margin:6px 0}.lede{color:var(--muted);font-size:1.03rem}.callout{margin:14px 0;padding:13px 15px;border-left:4px solid var(--blue);border-radius:7px;background:var(--blueSoft)}.warning{border-color:var(--amber);background:var(--amberSoft)}.critical{border-color:var(--red);background:var(--redSoft)}.success{border-color:var(--green);background:var(--greenSoft)}.label{display:inline-block;margin-right:5px;color:var(--blue);font-size:.74rem;font-weight:800;letter-spacing:.07em;text-transform:uppercase}.inference{color:var(--amber)}.recommendation{color:var(--green)}.unknown{color:var(--muted)}.stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:18px 0}.stat{padding:14px;border:1px solid var(--line);border-radius:12px;background:var(--surface2)}.stat b{display:block;font-size:1.55rem;letter-spacing:-.03em}.stat span{color:var(--muted);font-size:.82rem}.coverage-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:15px}.coverage-card{padding:18px;border:1px solid var(--line);border-radius:13px;background:var(--surface2)}.coverage-card h3{margin:0 0 12px}.metric{margin:12px 0}.metric-head{display:flex;justify-content:space-between;gap:12px;margin-bottom:5px;font-size:.9rem}.metric-head span:last-child{font-variant-numeric:tabular-nums;font-weight:700}.meter{height:9px;overflow:hidden;border-radius:999px;background:var(--line)}.meter i{display:block;height:100%;border-radius:inherit;background:linear-gradient(90deg,#4078df,#56ae91)}.table-wrap{overflow-x:auto;margin:14px 0}table{width:100%;border-collapse:collapse;font-size:.9rem}th,td{padding:9px 10px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}th{color:var(--muted);font-size:.75rem;letter-spacing:.05em;text-transform:uppercase}tr:last-child td{border-bottom:0}.badge{display:inline-block;padding:2px 8px;border-radius:999px;font-size:.73rem;font-weight:800;white-space:nowrap}.p0{color:var(--red);background:var(--redSoft)}.p1{color:var(--amber);background:var(--amberSoft)}.p2{color:var(--blue);background:var(--blueSoft)}.p3{color:var(--muted);background:var(--surface2)}.small{color:var(--muted);font-size:.87rem}.timeline{display:grid;gap:10px}.milestone{display:grid;grid-template-columns:98px minmax(0,1fr);gap:14px;padding:14px;border:1px solid var(--line);border-radius:12px;background:var(--surface2)}.milestone>b{color:var(--blue)}pre{overflow:auto;padding:16px;border:1px solid var(--line);border-radius:12px;background:var(--surface2);line-height:1.5}.pillrow{display:flex;gap:8px;flex-wrap:wrap}.pillrow span{border:1px solid var(--line);border-radius:999px;padding:3px 9px;color:var(--muted);font-size:.82rem}footer{padding:0 0 36px;color:var(--muted);font-size:.88rem}@media(max-width:760px){.layout{grid-template-columns:1fr}nav{position:static;display:grid;grid-template-columns:repeat(2,1fr);gap:0 10px}nav strong{grid-column:1/-1}.stats{grid-template-columns:1fr}.coverage-grid{grid-template-columns:1fr}.milestone{grid-template-columns:1fr;gap:3px}}@media print{:root{color-scheme:light;--bg:#fff;--surface:#fff;--surface2:#f7f8fa;--text:#111;--muted:#444;--line:#ccc}body{background:#fff;font-size:10pt}.hero{padding:25px 0;print-color-adjust:exact}.hero-inner,main,footer{width:100%}.layout{display:block}nav{display:none}section{box-shadow:none;break-inside:avoid}a{color:inherit}}
+  </style>
+</head>
+<body>
+  <header class="hero"><div class="hero-inner">
+    <div class="eyebrow">Clive · Engineering review</div>
+    <h1>Quality, testing and open-source adoption audit</h1>
+    <p>An evidence-based snapshot of the current checkout, the completed M1–M7 test improvements, remaining high-risk gaps, and a practical route toward broader adoption.</p>
+    <div class="meta"><span class="pill">Updated 18 October 2026</span><span class="pill">Branch main · 2 commits behind origin/main</span><span class="pill">HEAD ff584c81d904</span><span class="pill">Source 1.2.0</span><span class="pill">Dirty worktree</span></div>
+  </div></header>
+  <main><div class="layout">
+    <nav aria-label="Report contents"><strong>In this report</strong>
+      <a href="#summary">Executive summary</a><a href="#repo">Repository audit</a><a href="#baseline">Coverage baseline</a><a href="#gaps">Test gap analysis</a><a href="#roadmap">Coverage roadmap</a><a href="#ci">CI/CD</a><a href="#readme">README and docs</a><a href="#preview">Developer Preview</a><a href="#growth">Open-source growth</a><a href="#architecture">Architecture opportunities</a><a href="#decisions">Decision record</a>
+    </nav>
+    <article>
+      <section id="summary">
+        <h2>Executive summary</h2>
+        <p class="lede">M1–M7 moved Clive from an undocumented coverage baseline to independent Rust and frontend line-coverage gates at 85%, plus focused regression coverage for partial Trash journal failure. The current measured suites exceed that floor. Remaining gains should come from broader transfer failure invariants and native macOS workflows, not from maximizing one aggregate percentage.</p>
+        <h3>Current Posture</h3>
+        <div class="stats"><div class="stat"><b>86.64%</b><span>Rust line coverage · 116 tests passed</span></div><div class="stat"><b>85.53%</b><span>React/TypeScript line coverage · 503 tests passed</span></div><div class="stat"><b>85%</b><span>Separate enforced line floor for each suite</span></div></div>
+        <div class="callout warning"><span class="label inference">Assessment</span>Overall posture: strong local regression detection, but not yet production-grade evidence for native-volume behavior. Frontend branch coverage is 72.93%, Rust function coverage 72.07%, and Rust branch counters are unavailable. Some source modules remain substantially below the aggregate floor.</div>
+        <p><span class="label">Fact</span>The repository has a Tauri 2 Rust backend and a React/TypeScript frontend. Filesystem mutations and macOS integration are implemented in Rust; frontend tests mock Tauri IPC. There is a Tauri contract checker, but it does not replace runtime IPC tests.</p>
+        <p><span class="label">Measurement</span>After M7, <code>make quality</code> passed contract validation (42 commands, 16 DTOs), Rust formatting and Clippy with warnings denied, 116 Rust tests at 86.64% line coverage, frontend lint/build, and 503 frontend tests across 72 files at 85.53%. Oxlint and bundler emitted non-blocking warnings. <code>make build</code> and <code>make verify-dmg</code> passed in M5; packaging was not part of M7.</p>
+        <p><span class="label unknown">Unknown</span>The current public GitHub release and tag could not be verified from authoritative release/tag pages in this audit session. The local clone has no SemVer tags and only a Gitea `origin`; do not infer the public release state from local changelog or GitHub mirror pages.</p>
+      </section>
+
+      <section id="repo">
+        <h2>Repository audit</h2>
+        <h3>Version and reproducibility</h3>
+        <div class="table-wrap"><table><tbody>
+          <tr><th>Checkout</th><td><code>main</code>, commit <code>ff584c81d904807ff4e21ee3032e6be37272d425</code></td></tr>
+          <tr><th>Worktree</th><td>Dirty before this report update; numerous pre-existing source, test, spec, workflow and documentation changes. Branch reports 2 commits behind local <code>origin/main</code>. Audit results describe this worktree, not a clean checkout.</td></tr>
+          <tr><th>Declared source version</th><td><code>1.2.0</code> in <code>tauri.conf.json</code>, root <code>Cargo.toml</code>, and <code>frontend/package.json</code>; <code>build.rs</code> enforces parity.</td></tr>
+          <tr><th>Changelog</th><td><code>CHANGELOG.md</code> lists <code>1.2.0</code> dated 2026-10-16 and an Unreleased section.</td></tr>
+          <tr><th>Latest public GitHub Release / tag</th><td>Unknown in this audit: release/tag pages were not accessible to verify. No version tags exist in this local clone. Public mirror and local Gitea remote have separate histories.</td></tr>
+          <tr><th>Remote</th><td>Local <code>origin</code> is Gitea at <code>http://platone:3000/gianluca/clive.git</code>. GitHub is documented as a filtered mirror, so the two trees/workflows can differ.</td></tr>
+        </tbody></table></div>
+        <h3>Architecture and repository shape</h3>
+        <ul>
+          <li><code>src-tauri/</code>: Tauri entrypoint, commands, filesystem capabilities, AI gateway, error mapping and macOS-specific operations.</li>
+          <li><code>frontend/</code>: Vite, React 19, TypeScript, Vitest/Testing Library, app shell, panes, settings and AI workflows.</li>
+          <li><code>openspec/specs/</code>: behavioral specifications; <code>docs/plans/</code> and <code>docs/specs/</code>: design and implementation records.</li>
+          <li><code>vendor/wise</code>: pinned Git submodule and local frontend package dependency.</li>
+          <li>Root <code>Makefile</code>, <code>scripts/</code> and <code>.gitea/workflows/</code>: setup, quality, coverage, packaging and canonical Gitea CI.</li>
+        </ul>
+        <h3>Runtime map</h3>
+        <pre class="mermaid">flowchart LR
+  User[macOS user] --> UI[React app shell and pane workflows]
+  UI --> API[Typed frontend Tauri API]
+  API --> IPC[Tauri invoke boundary]
+  IPC --> Commands[Rust command handlers]
+  Commands --> FS[Filesystem capability modules]
+  Commands --> OS[macOS Finder, volumes, preview]
+  Commands --> Store[Tauri store and operation journal]
+  Commands --> Gateway[Optional AI gateway]
+  Gateway --> Provider[Configured local or cloud provider]</pre>
+        <p class="small">The diagram describes the source boundary; provider execution and actual mounted-volume behavior need runtime integration validation.</p>
+        <h3>Test infrastructure and safety</h3>
+        <ul>
+          <li>Rust unit tests use Cargo; frontend tests use Vitest, V8 coverage, Testing Library and jsdom. Frontend tests colocate as <code>*.test.ts(x)</code>.</li>
+          <li>Filesystem-focused tests use temporary directories and disposable files. Failure injection exercises partial copy/move and undo branches without destructive access to user data.</li>
+          <li>Frontend setup mocks native invoke. Contract validation checks registered command names, signatures and DTO parity, but does not execute commands through a real WebView.</li>
+          <li>No automated end-to-end suite was identified. M5 manually launched the macOS bundle and verified one real directory-list IPC call.</li>
+          <li>Rust coverage uses LLVM tools on macOS and needs <code>llvm-tools-preview</code>; frontend coverage is V8. Rust branch coverage is not emitted by the current setup.</li>
+        </ul>
+        <div class="callout"><span class="label recommendation">Evidence</span>See <a href="../Cargo.toml">Cargo.toml</a>, <a href="../tauri.conf.json">tauri.conf.json</a>, <a href="../src-tauri/src/main.rs">Tauri registration</a>, <a href="../frontend/src/api.ts">frontend IPC API</a>, <a href="../Makefile">Makefile</a>, <a href="../.gitea/workflows/build-dmg.yml">canonical Gitea workflow</a>, and <a href="test-coverage.md">detailed measured coverage</a>.</div>
+      </section>
+
+      <section id="baseline">
+        <h2>Test coverage baseline</h2>
+        <p class="lede">Results below are the latest recorded M6 measurements for the checked-out project changes. They are separated by language and must not be averaged into a single number.</p>
+        <div class="coverage-grid">
+          <div class="coverage-card"><h3>React / TypeScript · 503 tests</h3>
+            <div class="metric"><div class="metric-head"><span>Lines</span><span>85.53% · 3,353 / 3,920</span></div><div class="meter"><i style="width:85.53%"></i></div></div>
+            <div class="metric"><div class="metric-head"><span>Statements</span><span>81.66% · 3,907 / 4,784</span></div><div class="meter"><i style="width:81.66%"></i></div></div>
+            <div class="metric"><div class="metric-head"><span>Branches</span><span>72.93% · 2,539 / 3,481</span></div><div class="meter"><i style="width:72.93%"></i></div></div>
+            <div class="metric"><div class="metric-head"><span>Functions</span><span>74.91% · 1,048 / 1,399</span></div><div class="meter"><i style="width:74.91%"></i></div></div>
+            <p class="small">72 test files. Largest measured gaps: App.tsx 63.20%, AiDebugModal.tsx 61.11%, SettingsModal.tsx 70%, PlanPanel.tsx 80.73%. appConfig.ts is 94.82%.</p>
+          </div>
+          <div class="coverage-card"><h3>Rust / Tauri · 116 tests</h3>
+            <div class="metric"><div class="metric-head"><span>Lines</span><span>86.64% · 4,204 / 4,852</span></div><div class="meter"><i style="width:86.64%"></i></div></div>
+            <div class="metric"><div class="metric-head"><span>Regions</span><span>87.55% · 7,547 / 8,620</span></div><div class="meter"><i style="width:87.55%"></i></div></div>
+            <div class="metric"><div class="metric-head"><span>Functions</span><span>72.26% · 422 / 584</span></div><div class="meter"><i style="width:72.26%"></i></div></div>
+            <div class="metric"><div class="metric-head"><span>Branches</span><span>Not reported</span></div><div class="meter"><i style="width:0%"></i></div></div>
+            <p class="small">0 failed, 0 ignored; Rust test time 0.07 s. Largest gaps: commands/filesystem/desktop.rs 0%, main.rs 8.57%, volumes.rs 80.43%. Transfers module: 93.50% lines; Trash: 89.28%. “Not reported” is not zero branch coverage.</p>
+          </div>
+        </div>
+        <h3>Failures, skips, timing and limitations</h3>
+        <ul>
+          <li><strong>Latest recorded runs:</strong> 116 Rust tests passed, 0 failed/ignored, 0.07 seconds for tests; frontend M6 recorded 503 tests across 72 files with no reported failures or skips.</li>
+          <li><strong>Timing:</strong> Rust test execution was 0.07 seconds (excludes compile and coverage report). Frontend M6 does not record current end-to-end duration; M7 frontend suite in <code>make quality</code> took 7.82 seconds overall.</li>
+          <li><strong>Flakiness:</strong> not assessed by repeated runs. CI is currently macOS-specific for Rust coverage and DMG packaging.</li>
+          <li><strong>Exclusions:</strong> none configured. The 85% line gates are aggregate per language, so a poorly covered individual module can be masked by stronger modules.</li>
+          <li><strong>Sources:</strong> <a href="test-coverage.md">docs/test-coverage.md</a>, <a href="plans/2026-10-18-m6-coverage-gates.md">M6 gate decision</a>. Historical pre-M6 figures elsewhere in this HTML were removed to avoid confusion.</li>
+        </ul>
+      </section>
+
+      <section id="gaps">
+        <h2>Risk-based test gap analysis</h2>
+        <div class="table-wrap"><table><thead><tr><th>Priority</th><th>Observed gap</th><th>Risk and evidence</th><th>Recommended tests</th></tr></thead><tbody>
+          <tr><td><span class="badge p0">P0</span></td><td>Filesystem transfer failure matrix is not exhaustive</td><td>Data integrity on partial copy, source removal failure, overwrite/collision, interrupted work and recovery. M2 covers selected deterministic failure paths; physical cross-volume behavior remains unverified.</td><td>Temp-dir integration matrix for success, invalid path, permission failure, partial failure, cleanup failure, collision and undo. Add large/Unicode/symlink fixtures and state invariants.</td></tr>
+          <tr><td><span class="badge p0">P0</span></td><td>Trash/journal persistence faults and multi-item partial failures</td><td>M7 now verifies the specific case where one removal fails and journal persistence also fails: prior records remain, and a retry safely ignores an already-removed slot while deleting the remaining item. Other combinations of journal faults and concurrent access remain unverified.</td><td>Extend fault injection across journal read/write and removal stages; assert record-to-slot invariants and idempotent retry for each failure point.</td></tr>
+          <tr><td><span class="badge p1">P1</span></td><td>Native macOS commands and mounted-volume lifecycle</td><td><code>desktop.rs</code> uncovered; mount/eject/Finder interactions cannot be validated with unit mocks alone.</td><td>Adapter tests with command injection plus a small macOS smoke matrix for open, reveal, tag, volume enumeration/eject, permissions and error propagation.</td></tr>
+          <tr><td><span class="badge p1">P1</span></td><td>Rust startup/command registration low coverage</td><td><code>main.rs</code> 8.57%; type/signature checker catches drift but not runtime setup failure.</td><td>Runtime registration smoke and command-level tests for representative filesystem, tags, transfer and settings paths.</td></tr>
+          <tr><td><span class="badge p1">P1</span></td><td>App shell and native error/loading behavior</td><td><code>App.tsx</code> 63.20%; some tested workflows rely on mocked IPC and do not validate real command sequencing.</td><td>Observable React integration tests for dual-pane selection/navigation, stale response ordering, error retry, progress/cancel and restore/undo.</td></tr>
+          <tr><td><span class="badge p1">P1</span></td><td>AI safety behavior test depth</td><td>AI stability work is complete and not a separate workstream; safety still belongs in this test audit. Ensure authorization, confirmation, validation and no-mutation-on-reject remain regression protected.</td><td>Retain focused plan validation and authorization tests; add end-to-end Rust journal assertions for accepted, rejected, malformed and failed AI proposals.</td></tr>
+          <tr><td><span class="badge p2">P2</span></td><td>Settings, preview, search/filter and secondary UI branches</td><td>SettingsModal 70%, PlanPanel 80.73%; branch/function coverage trails line coverage.</td><td>Behavioral tests for persisted preferences, malformed legacy values, empty/loading/error states, keyboard interactions and preview fallbacks.</td></tr>
+          <tr><td><span class="badge p3">P3</span></td><td>Cosmetic states and low-risk utilities</td><td>Lower data-loss impact; avoid inflating coverage without user-visible reliability benefit.</td><td>Test only where visual state changes user action or accessibility.</td></tr>
+        </tbody></table></div>
+        <p><strong>Filesystem cases to track explicitly:</strong> copy, move, delete, rename and batch rename; overwrite; undo/redo; permissions and read-only directories; symlink cycles; hidden files; Unicode/special names; large files; interruption; partial failure; concurrent operations; cross-volume transfer; invalid paths; collisions; and insufficient disk space. Tests must use isolated temporary directories and disposable files.</p>
+      </section>
+
+      <section id="roadmap">
+        <h2>Coverage roadmap toward 85–90%</h2>
+        <p class="lede">M1–M7 are complete. Keep the existing 85% line floor as a regression guard while closing high-risk behavior and making module-level progress visible. Target 90% by suite only after each milestone improves meaningful assertions; do not force branch thresholds while Rust branch data is unavailable.</p>
+        <div class="timeline">
+          <div class="milestone"><b>M1–M3 · Done</b><div><strong>Trash journal, transfer/undo failure paths, path safety and volume guards.</strong><br>Fault injection and isolated temp directories; M3 adds symlink, Unicode and mount-boundary tests. Remaining dependency: native physical-volume check.</div></div>
+          <div class="milestone"><b>M4 · Done</b><div><strong>Frontend workflows.</strong><br>Dual-pane navigation ordering, persisted preferences, app-level listing errors and extracted workflow tests. Native IPC remains mocked in DOM tests.</div></div>
+          <div class="milestone"><b>M5 · Done</b><div><strong>Quality gate and macOS smoke.</strong><br><code>make quality</code>, DMG verification and one launch/listing IPC smoke. CI PR execution and real mount/eject remain external follow-ups.</div></div>
+          <div class="milestone"><b>M6 · Done</b><div><strong>Coverage floors.</strong><br>Separate 85% Rust/frontend line floors; config-store and disk-space parser tests. No exclusions. Branch/function values stay report-only.</div></div>
+          <div class="milestone"><b>M7 · Done</b><div><strong>Trash journal and batch-move partial failure recovery.</strong><br>One injected test proves retry after removal plus journal persistence failure; another proves successful batch items remain moved while the failed source is preserved and reported. Rust suite: 116/116, 86.64% lines. No production behavior change was needed.</div></div>
+          <div class="milestone"><b>Next · P0</b><div><strong>Remaining filesystem reliability matrix.</strong><br>Modules: <code>commands/filesystem/transfers.rs</code>, <code>trash.rs</code>, journal helpers. Add remaining idempotent recovery, partial transfer, permission, collision and undo invariants. Target: lift touched core modules toward ≥90% lines and raise meaningful branch coverage. Effort: 3–5 days; no new framework.</div></div>
+          <div class="milestone"><b>Next · P1</b><div><strong>Native macOS seam and command smoke suite.</strong><br>Isolate Finder/open/volume process adapters, test argument and error mapping, then run a small real macOS smoke matrix. Target: bring <code>desktop.rs</code> out of 0% where separable; keep unmockable OS behavior risk-based. Effort: 2–4 days.</div></div>
+          <div class="milestone"><b>Next · P1</b><div><strong>App shell and settings branches.</strong><br>Observable loading/error/keyboard/persistence behavior around <code>App.tsx</code> and <code>SettingsModal.tsx</code>. Target: App ≥75%, Settings ≥85%, and lift frontend branch coverage beyond 80% before raising gate. Effort: 3–5 days.</div></div>
+          <div class="milestone"><b>Then · P2</b><div><strong>Remaining UI, preview, AI safety and module floors.</strong><br>Cover preview fallbacks, PlanPanel and accepted/rejected AI mutation journal behavior. Set 90% line gate only when measured suite has headroom and critical modules meet documented floors. Effort: 3–6 days.</div></div>
+        </div>
+        <h3>Acceptance criteria for each milestone</h3>
+        <ul><li>All filesystem mutations use fresh temporary directories and cleanup; no user paths or mounted home folders.</li><li>Every destructive workflow asserts both filesystem state and journal/recovery state for success and failure paths.</li><li>Relevant focused suite and <code>make quality</code> pass; diff review shows no unjustified coverage exclusions.</li><li>Record per-module line/branch/function results, runtime duration, failed/skipped counts, and any platform-only steps.</li><li>Raise aggregate line gates progressively (85% → 87% → 90%) only after the measured baseline consistently clears the proposed threshold.</li></ul>
+      </section>
+
+      <section id="ci">
+        <h2>CI/CD quality gates</h2>
+        <h3>Current state</h3>
+        <p><span class="label">Fact</span>Local canonical workflow <a href="../.gitea/workflows/build-dmg.yml"><code>.gitea/workflows/build-dmg.yml</code></a> runs on pull requests to <code>main</code>, pushes to <code>main</code> and <code>v*</code>, and manual dispatch. It delegates to shared <code>gitea-ci</code> workflow v1.0.4. Its prepare/build commands include submodule setup, llvm tools, <code>make quality</code>, <code>make build</code> and <code>make verify-dmg</code>; it uploads an Apple Silicon DMG.</p>
+        <p>README describes a separate GitHub Actions build for version tags, while this local checkout has no <code>.github/workflows</code> directory. The public mirror workflow content and current run status were not verified in this audit. The first Gitea pull-request CI run was still pending in the recorded M5 report.</p>
+        <h3>Recommended minimum gates</h3>
+        <div class="table-wrap"><table><thead><tr><th>Gate</th><th>Recommendation</th><th>Impact</th></tr></thead><tbody>
+          <tr><td>PR fast checks</td><td>Tauri contract check, cargo fmt, Clippy <code>-D warnings</code>, Rust tests, frontend lint/type-check/tests with existing 85% floors.</td><td>Runs before packaging; moderate macOS runner time due LLVM.</td></tr>
+          <tr><td>Packaging</td><td>Build and verify DMG on main/tag/manual release path; checksum, architecture, app executable and ad-hoc signature checked.</td><td>Most expensive job; avoid repeating full DMG build for every optional documentation-only update if workflow supports path filtering safely.</td></tr>
+          <tr><td>Coverage artifacts</td><td>Upload Rust and frontend HTML/summary as distinct CI artifacts; retain summaries on PRs. Do not merge language percentages.</td><td>Small storage and upload cost; improves review of module regression.</td></tr>
+          <tr><td>Native smoke</td><td>Separate macOS smoke job for app launch and representative IPC; keep volume eject as manual/test-device gated.</td><td>Requires GUI-capable runner or documented local release check; runner availability must be confirmed.</td></tr>
+          <tr><td>Threshold progression</td><td>Stage 1 baseline (done); Stage 2 current 85% floors (done); Stage 3 raise to 87% after critical gaps; Stage 4 raise to 90% after module floors and stable runs.</td><td>Avoid arbitrary thresholds; require a coverage diff and exception rationale.</td></tr>
+        </tbody></table></div>
+        <p class="small">Do not call the GitHub mirror workflow equivalent to Gitea until both workflow files and their latest runs are inspected. Maintain one canonical required PR gate where practical and publish mirrored results clearly.</p>
+      </section>
+
+      <section id="readme">
+        <h2>README and documentation review</h2>
+        <p><span class="label">Fact</span>README already explains the dual-pane workflow, preview, tags, optional AI, local development commands, coverage gates, Developer Preview Gatekeeper warning, and split Gitea/GitHub release model. OpenSpec describes behavior. The audit found no root <code>LICENSE</code> or <code>CONTRIBUTING.md</code> in the local listing; verify before public adoption and add them only after maintainer decision. Existing screenshot/hero asset is <code>frontend/src/assets/hero.png</code>, but README does not currently embed a product screenshot.</p>
+        <h3>Recommended README order</h3>
+        <ol><li>Project name and concise dual-pane macOS tagline.</li><li>One large, current product screenshot or short workflow GIF.</li><li>Four to six verified features and a brief “why another file manager?” explanation.</li><li>Developer Preview installation and first-launch Gatekeeper steps, with clear Apple Silicon scope.</li><li>Known limitations: ad-hoc signing, no notarization, unsupported architectures/platforms if any.</li><li>Keyboard shortcuts, optional AI/privacy/configuration, and supported file operations.</li><li>Development, test/coverage commands and architecture links.</li><li>Bug reports, contribution guide and license.</li></ol>
+        <h3>Documentation gaps</h3>
+        <ul><li>Add representative screenshots for dual-pane list, card mode, preview, Navigator and settings, at readable scale and with realistic filenames.</li><li>Make README artifact links point to a stable release/download page instead of asking users to find a workflow artifact, if published releases are available.</li><li>Add a contribution guide covering setup/submodule, macOS prerequisites, test safety, issue reports and pull-request evidence.</li><li>Separate user docs from implementation plans; keep OpenSpec canonical for behavior and link to short user-facing feature docs.</li><li>Confirm license and public GitHub issue templates, description and topics. Local Gitea and GitHub mirror metadata are distinct.</li></ul>
+      </section>
+
+      <section id="preview">
+        <h2>Developer Preview distribution plan</h2>
+        <h3>Verified distribution posture</h3>
+        <ul><li>Build target in local Gitea workflow is Apple Silicon DMG (<code>aarch64</code>). No Intel artifact is specified; Intel support is therefore unverified.</li><li>Tauri config uses signing identity <code>-</code>; M5 verified the bundle with an ad-hoc signature and <code>hdiutil verify</code>.</li><li>There is no Developer ID notarization. README correctly explains Gatekeeper approval and advises downloading only the official artifact.</li><li>README points users to a GitHub Actions artifact. Stable public release availability was not verified in this audit.</li></ul>
+        <h3>Recommended release checklist</h3>
+        <ol><li>Start from a clean, reviewed source snapshot; verify source manifests, changelog and tag all agree.</li><li>Run <code>make quality</code>, <code>make build</code>, <code>make verify-dmg</code> and a macOS launch + representative IPC smoke.</li><li>Record artifact SHA-256, architecture, macOS minimum version, commit SHA, ad-hoc signature and notarization status.</li><li>Attach DMG, checksum and concise release notes to a GitHub Release if the mirror publishing process is approved and tested.</li><li>Show the exact first-launch Gatekeeper steps; never instruct users to disable Gatekeeper globally.</li><li>Keep a rollback path to the previous artifact and document known issues per version.</li></ol>
+        <div class="callout warning"><span class="label inference">Trade-off</span>Without an Apple Developer Account, ad-hoc-signed Developer Preview distribution is possible but retains first-launch friction and no notarization reputation. The practical near-term improvements are reproducible artifacts, checksums, consistent release notes and a clear install guide. Do not claim Intel support unless built and tested.</div>
+      </section>
+
+      <section id="growth">
+        <h2>Open-source growth plan</h2>
+        <p><span class="label">Snapshot</span>The public GitHub repository was visible during this review with 1 star and topics including <code>ai</code>, <code>finder</code> and <code>macos</code>. This is a point-in-time observation, not a growth metric. Community rules and public repository state can change.</p>
+        <h3>Priorities</h3>
+        <ol><li>Improve trust first: stable versioned downloads, clear license and contribution path, screenshots, known limitations and issue templates.</li><li>Invite workflow-specific feedback from macOS power users and developers; respond to reports with reproducible steps and release notes.</li><li>Publish one honest launch post after the download/install path and CI status are ready; disclose maintainer affiliation and Developer Preview status.</li><li>Share measured engineering decisions and roadmap updates occasionally instead of reposting promotional links.</li></ol>
+        <h3>Communities and draft copy</h3>
+        <ul><li><strong>Hacker News:</strong> submit as <code>Show HN: Clive — an open-source dual-pane file manager for macOS</code>. Show a working product, include the repository and direct download, state what feedback is useful, and write the post in the maintainer’s own words. Review the <a href="https://news.ycombinator.com/showhn.html">Show HN guidelines</a> and <a href="https://news.ycombinator.com/newsguidelines.html">HN guidelines</a>.</li><li><strong>r/MacApps:</strong> only post after checking current rules and karma requirements. The recent rules discussion states a 30-day self-promotion interval and relationship disclosure; verify the live rules before posting. Use an <code>[OS]</code> prefix if the rule still requests it. See <a href="https://www.reddit.com/r/macapps/comments/1o01a9f/rmacapps-rule-updates-on-promotion-vibe-coding-and-more/">moderator rule update</a>.</li><li><strong>GitHub:</strong> improve README screenshots, issue forms, discussions and release assets. Suggested topics: <code>macos</code>, <code>file-manager</code>, <code>dual-pane</code>, <code>tauri</code>, <code>rust</code>, <code>react</code>, <code>open-source</code>. Avoid generic AI topic dominance unless that is the user’s search intent.</li><li><strong>Mac developer communities:</strong> participate in relevant Tauri and macOS forums with a concrete technical story (Rust filesystem boundary, preview workflow, accessibility or testing lessons), following each community’s current self-promotion rules.</li></ul>
+        <div class="coverage-grid"><div class="coverage-card"><h3>Show HN draft</h3><p>Show HN: Clive — an open-source dual-pane file manager for macOS</p><p class="small">I built Clive for keyboard-first work across two folders. It combines a resizable dual-pane layout, previews and macOS filesystem actions in a Tauri/Rust app. It is a Developer Preview: unsigned by Developer ID and not notarized, so first launch needs Gatekeeper approval. I’d especially value feedback on transfer safety, navigation and the install experience. Source and current build: [links].</p></div><div class="coverage-card"><h3>Reddit draft</h3><p>[OS] Clive: open-source dual-pane file manager for macOS (Developer Preview)</p><p class="small">I’m Clive’s maintainer. I built it for moving between folders with keyboard-first dual panes, previews, Finder-compatible tags and optional AI actions. It’s a Developer Preview and currently ad-hoc signed/not notarized; install steps and source are linked. What would make this useful alongside Finder or your current file manager? [screenshots and links]</p></div></div>
+        <p class="small"><strong>Short description:</strong> “Clive is an open-source, keyboard-first dual-pane file manager for macOS, built with Tauri, Rust and React.” Keep promotion infrequent, answer criticism, do not ask for artificial stars, and do not post generated copy to Hacker News.</p>
+      </section>
+
+      <section id="architecture">
+        <h2>Architecture opportunities and trade-offs</h2>
+        <p class="lede">The capability-module split and typed Tauri boundary are meaningful improvements. The most valuable next architectural work is selective: make native effects injectable at the OS boundary and keep filesystem recovery behavior cohesive.</p>
+        <div class="table-wrap"><table><thead><tr><th>Opportunity</th><th>Taxonomy</th><th>Evidence and trade-off</th><th>Recommendation</th></tr></thead><tbody>
+          <tr><td>Transfer journal and rollback</td><td>Deep Module · Locality</td><td>Transfer implementation handles cross-device fallback, partial cleanup and undo. Keeping the journal/recovery invariant near the mutation flow makes the hardest behavior easier to reason about; too many wrappers could obscure the file operation.</td><td>Preserve one cohesive transfer API; add explicit outcome types and state-invariant tests only where current error values lose recovery state.</td></tr>
+          <tr><td>macOS process/desktop adapters</td><td>Seam · Leakage</td><td>Volume and desktop behavior calls macOS tools/frameworks directly; unit tests cannot prove the real OS contract.</td><td>Introduce narrow adapters for process invocation and Finder/open actions with deterministic unit tests, plus a small macOS smoke suite. Avoid a generic platform framework.</td></tr>
+          <tr><td>Tauri command contract</td><td>Seam · Locality</td><td>42 command names/signatures and 16 DTOs are checked. Frontend wrappers and Rust registration remain distinct source declarations and could drift semantically.</td><td>Keep the checker as a fast structural guard; complement with representative real invoke tests and error-shape assertions.</td></tr>
+          <tr><td>Frontend app-shell ownership</td><td>Deep Module · Locality</td><td>Workflow hooks now own navigation, transfer and preview transitions; App.tsx still has the largest frontend line gap.</td><td>Continue extracting only cohesive user workflows with observable integration tests; avoid splitting components solely to raise coverage.</td></tr>
+          <tr><td>Coverage policy</td><td>Locality · Leakage</td><td>Aggregate 85% line floors can conceal low-coverage modules and branch gaps.</td><td>Publish per-module summaries and risk floors; raise the total floor only after high-risk modules improve. Do not exclude hard files.</td></tr>
+        </tbody></table></div>
+        <div class="callout success"><span class="label recommendation">Top recommendation</span>Prioritize the destructive-filesystem recovery matrix and native command seams, then add a representative macOS runtime test for actual IPC and volume lifecycle. This reduces data-loss and platform risk while the aggregate coverage gates remain stable.</div>
+        <h3>Usage modes</h3>
+        <ul><li><strong>Ready for:</strong> local development with a reproducible quality command; pull-request validation on the canonical Gitea workflow; Apple Silicon Developer Preview artifacts with explicit ad-hoc-signing caveats.</li><li><strong>Still requires integration:</strong> confirmed GitHub release/tag and mirror workflow parity; repeatable real macOS volume and Finder tests; physical cross-volume transfer verification; public contribution/license readiness; notarized distribution.</li></ul>
+      </section>
+
+      <section id="decisions">
+        <h2>Decision record and next milestone</h2>
+        <div class="table-wrap"><table><thead><tr><th>Decision</th><th>Current choice</th><th>Reason</th><th>Revisit when</th></tr></thead><tbody>
+          <tr><td>Coverage gates</td><td>85% lines separately for Rust and frontend; no exclusions</td><td>Measured baseline reached; protects against regressions without blending metrics</td><td>Critical module coverage and branch reporting improve consistently</td></tr>
+          <tr><td>CI platform</td><td>Canonical Gitea macOS workflow delegates shared packaging workflow</td><td>Supports LLVM coverage and macOS DMG generation in one runner</td><td>GitHub mirror workflow is verified and required PR checks are available there</td></tr>
+          <tr><td>Release identity</td><td>Ad-hoc signing, no notarization</td><td>No Apple Developer Account currently available</td><td>Developer ID account or alternate trusted distribution route becomes available</td></tr>
+          <tr><td>Immediate work</td><td>Remaining P0 transfer recovery matrix, then macOS native seam</td><td>Most direct reduction of data-loss and platform integration risk; M7 closed one Trash journal recovery scenario</td><td>Transfer invariants and smoke matrix pass reliably</td></tr>
+        </tbody></table></div>
+        <p><strong>Next implementation milestone:</strong> continue the remaining destructive filesystem matrix around transfer and trash/journal recovery. M7 closes the journal-write-after-partial-empty scenario and batch-move partial-failure reporting. Remaining work: expand transfer permission/collision/rollback assertions and validate behavior on an actual second volume. Acceptance: isolated temp dirs; success, collision, permission, partial failure, cleanup failure and retry cases; filesystem and journal state assertions; focused tests and <code>make quality</code> passing; module coverage recorded. Estimated effort: 3–5 engineering days. No broad refactor or new test framework is proposed.</p>
+      </section>
+    </article>
+  </div></main>
+  <footer>Created 18 October 2026 · Updated 18 October 2026 · Audit scope: local checkout at <code>ff584c81d904807ff4e21ee3032e6be37272d425</code>, branch <code>main</code>, dirty worktree, two commits behind local origin. Rust and frontend coverage, and the full quality gate, were run after M7. Community policy links are time-sensitive and should be checked on posting day.</footer>
+</body>
+</html>

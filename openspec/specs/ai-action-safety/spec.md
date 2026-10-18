@@ -39,3 +39,14 @@ The system SHALL record the inverse operations of an applied batch and provide a
 #### Scenario: Undo a batch
 - **WHEN** the user triggers undo after a batch applies
 - **THEN** the inverse operations are executed and items return to their prior state
+
+### Requirement: AI mutations use the Rust batch journal
+Every AI-proposed filesystem mutation SHALL be submitted to the Rust batch executor, which validates protected locations and mounted-volume identity and persists inverse operations before continuing the batch. Creating a file SHALL fail if the target already exists. Undo SHALL remove an AI-created file only when its content still matches the content created by the batch.
+
+#### Scenario: Preserve an existing generated-file target
+- **WHEN** an AI proposal attempts to create a file at an existing path
+- **THEN** the operation fails without replacing the existing file
+
+#### Scenario: Preserve edits made after generated-file creation
+- **WHEN** a user changes a generated file before undo
+- **THEN** undo reports a failure and leaves the edited file and retryable journal entry intact

@@ -1,42 +1,10 @@
 /**
- * Bridges the pure AI layers (`apply`, `budget`, `actions`) to the real Tauri
- * IPC commands and filesystem. Kept tiny and side-effecting so the modules it
- * feeds stay testable.
+ * Reads file contents for AI context assembly. All AI-proposed mutations are
+ * executed by the Rust plan journal through the shared proposal controller.
  */
-import { createFolder, deleteToTrash, listDir, moveFile, readTextFile, rename as renameCmd, writeTextFile } from '../api'
-import type { Fs } from './apply'
-import type { FileContent } from './budget'
-import type { FileEntry } from '../api'
-
-function split(path: string): { parent: string; name: string } {
-  const i = path.lastIndexOf('/')
-  return { parent: i > 0 ? path.slice(0, i) : '/', name: path.slice(i + 1) }
-}
-
-export const fs: Fs = {
-  exists: async (path) => {
-    const { parent, name } = split(path)
-    try {
-      const items = await listDir(parent, true)
-      return items.some((i) => i.name === name)
-    } catch {
-      return false
-    }
-  },
-  rename: (path, newName) => renameCmd(path, newName),
-  move: (src, dst) => moveFile(src, dst),
-  createFolder: (parent, name) => createFolder(parent, name),
-}
-
-/** Write a new file (used by "Generate content" after confirmation). */
-export async function writeFile(path: string, content: string): Promise<void> {
-  await writeTextFile(path, content)
-}
-
-/** Move a path to the Trash (used by chat trash actions after confirmation). */
-export async function moveToTrash(path: string): Promise<void> {
-  await deleteToTrash(path)
-}
+import { readTextFile } from '../api.js'
+import type { FileContent } from './budget.js'
+import type { FileEntry } from '../api.js'
 
 /** Read budgeting inputs for the given entries; failures → metadata-only. */
 export async function collectFileContents(entries: FileEntry[]): Promise<FileContent[]> {

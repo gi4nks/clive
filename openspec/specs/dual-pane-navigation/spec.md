@@ -12,6 +12,8 @@ The system SHALL present two equivalent file panes (left and right), each with i
 - **WHEN** the user opens a folder in one pane
 - **THEN** only that pane changes directory
 - **AND** the other pane keeps showing its folder
+- **AND** a failed listing does not show entries from the previous path in the navigated pane
+- **AND** a late response from an older navigation does not replace the latest listing
 
 #### Scenario: Initial folders
 - **WHEN** the app opens in dual-pane mode

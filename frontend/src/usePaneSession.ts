@@ -6,9 +6,8 @@ export const blankPane = (): PaneState => ({
   renamingPath: null, query: '', loading: false,
 })
 
-/** Deep in-process module for dual-pane session state. It owns the mutable
- * pane snapshot and stable mutation seam; navigation policy remains injectable
- * in App until the next extraction step. */
+/** Owns dual-pane session state and exposes a stable mutation seam. Navigation
+ * transitions and per-pane history are composed through usePaneNavigation. */
 export function usePaneSession() {
   const [panes, setPanes] = useState<Record<PaneId, PaneState>>({ left: blankPane(), right: blankPane() })
   const [active, setActive] = useState<PaneId>('left')

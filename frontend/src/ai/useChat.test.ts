@@ -4,6 +4,7 @@ import { useChat } from './useChat.js'
 import { CANCELLED_SENTINEL } from './chat.js'
 import * as runtime from './runtime.js'
 import * as fsBridge from './fs.js'
+import * as api from '../api.js'
 import { setAppConfig } from '../settings/appConfig.js'
 vi.mock('./reviewProposal.js', () => ({ reviewProposal: vi.fn(async () => true) }))
 
@@ -12,15 +13,15 @@ vi.mock('./runtime.js', () => ({
 }))
 
 vi.mock('./fs.js', () => ({
-  fs: {
-    exists: vi.fn(async () => true),
-    rename: vi.fn(async () => {}),
-    move: vi.fn(async () => {}),
-    createFolder: vi.fn(async (_parent: string, _name: string) => ''),
-  },
-  writeFile: vi.fn(async () => {}),
-  moveToTrash: vi.fn(async () => {}),
   collectFileContents: vi.fn(async () => []),
+}))
+
+vi.mock('../api.js', () => ({
+  applyPlan: vi.fn(async (_batchId: string, ops: { id: string }[]) => ({ applied: ops.length, skipped: 0, failed: [], batchId: 'test-batch' })),
+  undoPlan: vi.fn(),
+  listVolumes: vi.fn(async () => []),
+  listDir: vi.fn(async () => []),
+  readTextFile: vi.fn(async () => ''),
 }))
 
 function fakeStream(chunks: string[]) {
@@ -36,12 +37,9 @@ function streamTrash(file: string) {
 beforeEach(() => {
   setAppConfig({ ai: { enabled: true } })
   vi.mocked(runtime.streamChat).mockReset()
-  vi.mocked(fsBridge.fs.rename).mockClear()
-  vi.mocked(fsBridge.fs.move).mockClear()
-  vi.mocked(fsBridge.fs.createFolder).mockClear()
-  vi.mocked(fsBridge.writeFile).mockClear()
-  vi.mocked(fsBridge.moveToTrash).mockClear()
   vi.mocked(fsBridge.collectFileContents).mockClear()
+  vi.mocked(api.applyPlan).mockClear()
+  vi.mocked(api.applyPlan).mockImplementation(async (_batchId, ops) => ({ applied: ops.length, skipped: 0, failed: [], batchId: 'test-batch' }))
 })
 
 describe('useChat', () => {
@@ -117,13 +115,10 @@ describe('useChat', () => {
     })
     expect(result.current.messages[1].actions?.[0]).toMatchObject({ type: 'trash' })
     expect(result.current.messages[1].actionsApplied?.[0]).toBeFalsy()
-    expect(fsBridge.moveToTrash).not.toHaveBeenCalled()
-    expect(fsBridge.fs.rename).not.toHaveBeenCalled()
-    expect(fsBridge.fs.move).not.toHaveBeenCalled()
-    expect(fsBridge.writeFile).not.toHaveBeenCalled()
+    expect(api.applyPlan).not.toHaveBeenCalled()
   })
 
-  it('applyAction(trash) calls moveToTrash, marks applied, refreshes', async () => {
+  it('applyAction(trash) calls the Rust batch executor, marks applied, refreshes', async () => {
     vi.mocked(runtime.streamChat).mockReturnValue(streamTrash('/d/a') as never)
     const d = deps()
     const { result } = renderHook(() => useChat(d))
@@ -133,12 +128,12 @@ describe('useChat', () => {
     await act(async () => {
       await result.current.applyAction(1, 0)
     })
-    expect(fsBridge.moveToTrash).toHaveBeenCalledWith('/d/a')
+    expect(api.applyPlan).toHaveBeenCalledWith(expect.any(String), [{ id: 'chat:0:trash', kind: 'trash', path: '/d/a', included: true }])
     expect(result.current.messages[1].actionsApplied?.[0]).toBe(true)
     expect(d.refresh).toHaveBeenCalled()
   })
 
-  it('applyAction(rename) routes through applyPlan with the fs singleton', async () => {
+  it('applyAction(rename) routes through the Rust batch executor', async () => {
     vi.mocked(runtime.streamChat).mockReturnValue(
       fakeStream(['<<<ACTIONS>>>\n{"actions":[{"type":"rename","file":"/d/a.txt","newName":"b.txt"}]}\n<<<END>>>'])() as never,
     )
@@ -149,11 +144,10 @@ describe('useChat', () => {
     await act(async () => {
       await result.current.applyAction(1, 0)
     })
-    expect(fsBridge.fs.rename).toHaveBeenCalledWith('/d/a.txt', 'b.txt')
-    expect(fsBridge.moveToTrash).not.toHaveBeenCalled()
+    expect(api.applyPlan).toHaveBeenCalledWith(expect.any(String), [{ id: 'chat:0:rename', kind: 'rename', path: '/d/a.txt', newName: 'b.txt', included: true }])
   })
 
-  it('applyAction(createFolder) calls fs.createFolder once per path segment', async () => {
+  it('applyAction(createFolder) sends every parent folder to Rust in order-independent form', async () => {
     vi.mocked(runtime.streamChat).mockReturnValue(
       fakeStream(['<<<ACTIONS>>>\n{"actions":[{"type":"createFolder","folder":"Organizzato/00 Inbox"}]}\n<<<END>>>'])() as never,
     )
@@ -164,10 +158,10 @@ describe('useChat', () => {
     await act(async () => {
       await result.current.applyAction(1, 0)
     })
-    const cf = vi.mocked(fsBridge.fs.createFolder)
-    expect(cf).toHaveBeenCalledTimes(2)
-    expect(cf).toHaveBeenNthCalledWith(1, '/d', 'Organizzato')
-    expect(cf).toHaveBeenNthCalledWith(2, '/d/Organizzato', '00 Inbox')
+    expect(api.applyPlan).toHaveBeenCalledWith(expect.any(String), [
+      { id: 'chat:0:create-folder:parent:0', kind: 'createFolder', path: '/d/Organizzato', included: true },
+      { id: 'chat:0:create-folder:parent:1', kind: 'createFolder', path: '/d/Organizzato/00 Inbox', included: true },
+    ])
   })
 
   it('applyAction(organize) creates the folder and moves the file', async () => {
@@ -181,11 +175,13 @@ describe('useChat', () => {
     await act(async () => {
       await result.current.applyAction(1, 0)
     })
-    expect(fsBridge.fs.createFolder).toHaveBeenCalledWith('/d', 'docs')
-    expect(fsBridge.fs.move).toHaveBeenCalledWith('/d/a.txt', '/d/docs/a.txt')
+    expect(api.applyPlan).toHaveBeenCalledWith(expect.any(String), [
+      { id: 'chat:0:folder:parent:0', kind: 'createFolder', path: '/d/docs', included: true },
+      { id: 'chat:0:move', kind: 'move', path: '/d/a.txt', destDir: '/d/docs', included: true },
+    ])
   })
 
-  it('applyAction(create) writes the file via fs.ts writeFile', async () => {
+  it('applyAction(create) creates the file through the journaled Rust executor', async () => {
     vi.mocked(runtime.streamChat).mockReturnValue(
       fakeStream(['<<<ACTIONS>>>\n{"actions":[{"type":"create","file":"/d/note.md","content":"hi"}]}\n<<<END>>>'])() as never,
     )
@@ -196,12 +192,12 @@ describe('useChat', () => {
     await act(async () => {
       await result.current.applyAction(1, 0)
     })
-    expect(fsBridge.writeFile).toHaveBeenCalledWith('/d/note.md', 'hi')
+    expect(api.applyPlan).toHaveBeenCalledWith(expect.any(String), [{ id: 'chat:0:create-file', kind: 'createFile', path: '/d/note.md', content: 'hi', included: true }])
   })
 
   it('applyAction records fs failures in actionErrors without marking applied', async () => {
     vi.mocked(runtime.streamChat).mockReturnValue(streamTrash('/d/a') as never)
-    vi.mocked(fsBridge.moveToTrash).mockRejectedValueOnce(new Error('boom'))
+    vi.mocked(api.applyPlan).mockResolvedValueOnce({ applied: 0, skipped: 0, failed: [{ id: 'chat:0:trash', code: 'filesystem', error: 'boom' }], batchId: 'test-batch' })
     const { result } = renderHook(() => useChat(deps()))
     await act(async () => {
       await result.current.send('go')
@@ -242,7 +238,7 @@ describe('useChat', () => {
     await act(async () => {
       await result.current.applyAction(1, 0)
     })
-    expect(fsBridge.moveToTrash).not.toHaveBeenCalled()
+    expect(api.applyPlan).not.toHaveBeenCalled()
     expect(result.current.messages[1].actionErrors?.[0]).toContain('system')
     expect(d.setStatus).toHaveBeenCalledWith(expect.stringContaining('system'), 'error')
   })
@@ -268,21 +264,21 @@ describe('useChat', () => {
     expect(result.current.streaming).toBe(false)
   })
 
-  it('applyAction ignores a double-click: fs runs once', async () => {
+  it('applyAction ignores a double-click: Rust batch runs once', async () => {
     vi.mocked(runtime.streamChat).mockReturnValue(streamTrash('/d/a') as never)
     const { result } = renderHook(() => useChat(deps()))
     await act(async () => {
       await result.current.send('go')
     })
-    vi.mocked(fsBridge.moveToTrash).mockImplementationOnce(
-      () => new Promise((r) => setTimeout(r, 10)),
+    vi.mocked(api.applyPlan).mockImplementationOnce(
+      async (_batchId, ops) => new Promise((r) => setTimeout(() => r({ applied: ops.length, skipped: 0, failed: [], batchId: 'test-batch' }), 10)),
     )
     await act(async () => {
       const p1 = result.current.applyAction(1, 0)
       const p2 = result.current.applyAction(1, 0)
       await Promise.all([p1, p2])
     })
-    expect(fsBridge.moveToTrash).toHaveBeenCalledTimes(1)
+    expect(api.applyPlan).toHaveBeenCalledTimes(1)
     expect(result.current.messages[1].actionsApplied?.[0]).toBe(true)
   })
 
@@ -314,7 +310,7 @@ describe('useChat', () => {
     const v = result.current.validateAction(1, 0)
     expect(v.ok).toBe(false)
     if (!v.ok) expect(v.error).toMatch(/already exists/i)
-    expect(fsBridge.writeFile).not.toHaveBeenCalled()
+    expect(api.applyPlan).not.toHaveBeenCalled()
   })
 
   it('sets historyTruncated when the conversation overflows and clears it on reset', async () => {

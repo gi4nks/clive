@@ -28,10 +28,20 @@ fn main() {
     let pkg = std::fs::read_to_string("frontend/package.json").unwrap();
     let pkg_version = pkg
         .lines()
-        .find_map(|l| l.contains("\"version\":").then(|| l.split('\"').nth(3).map(str::to_string)).flatten())
+        .find_map(|l| {
+            l.contains("\"version\":")
+                .then(|| l.split('\"').nth(3).map(str::to_string))
+                .flatten()
+        })
         .unwrap();
-    assert_eq!(conf_version, cargo_version, "version drift: tauri.conf.json != Cargo.toml");
-    assert_eq!(conf_version, pkg_version, "version drift: tauri.conf.json != package.json");
+    assert_eq!(
+        conf_version, cargo_version,
+        "version drift: tauri.conf.json != Cargo.toml"
+    );
+    assert_eq!(
+        conf_version, pkg_version,
+        "version drift: tauri.conf.json != package.json"
+    );
     println!("cargo:rustc-env=CLIVE_VERSION={conf_version}");
 
     // Provenance: short git commit + branch ("unknown" outside a checkout).
@@ -45,8 +55,14 @@ fn main() {
             .filter(|s| !s.is_empty())
             .unwrap_or_else(|| "unknown".to_string())
     };
-    println!("cargo:rustc-env=CLIVE_GIT_COMMIT={}", git(&["rev-parse", "--short", "HEAD"]));
-    println!("cargo:rustc-env=CLIVE_GIT_BRANCH={}", git(&["rev-parse", "--abbrev-ref", "HEAD"]));
+    println!(
+        "cargo:rustc-env=CLIVE_GIT_COMMIT={}",
+        git(&["rev-parse", "--short", "HEAD"])
+    );
+    println!(
+        "cargo:rustc-env=CLIVE_GIT_BRANCH={}",
+        git(&["rev-parse", "--abbrev-ref", "HEAD"])
+    );
     println!("cargo:rerun-if-changed=../.git/HEAD");
     println!("cargo:rerun-if-changed=tauri.conf.json");
     println!("cargo:rerun-if-changed=Cargo.toml");

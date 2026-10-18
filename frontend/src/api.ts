@@ -43,31 +43,117 @@ export interface DiskSpace {
   volumeName: string
 }
 
+type FileTagUpdate = { path: string; tags: FileTag[] }
+
+/** Frontend wire contract for every command registered by Tauri. The check
+ * script compares command names and argument keys with Rust registration and
+ * function signatures. Wrappers below derive their result type from this map. */
+export interface TauriCommandMap {
+  list_dir: { args: { path: string; showHidden?: boolean }; result: FileEntry[] }
+  home_dir: { args: {}; result: string }
+  file_info: { args: { path: string }; result: FileInfo }
+  get_file_tags: { args: { paths: string[] }; result: [string, FileTag[]][] }
+  set_files_tags: { args: { updates: FileTagUpdate[]; allowSystem: boolean }; result: void }
+  copy_file: { args: { src: string; dst: string; allowSystem: boolean }; result: void }
+  move_file: { args: { src: string; dst: string; allowSystem: boolean }; result: void }
+  rename: { args: { path: string; newName: string; allowSystem: boolean }; result: void }
+  delete_to_trash: { args: { path: string; allowSystem: boolean }; result: void }
+  trash_list: { args: {}; result: TrashItem[] }
+  trash_restore: { args: { id: string }; result: string }
+  trash_delete_forever: { args: { id: string }; result: void }
+  trash_empty: { args: {}; result: void }
+  create_folder: { args: { parent: string; name: string; allowSystem: boolean }; result: string }
+  read_text_file: { args: { path: string }; result: string }
+  reveal_in_finder: { args: { path: string }; result: void }
+  open_path: { args: { path: string }; result: void }
+  connect_smb: { args: { endpoint: string }; result: void }
+  disconnect_volume: { args: { path: string }; result: void }
+  quick_look: { args: { path: string }; result: void }
+  disk_space: { args: { path: string }; result: DiskSpace }
+  read_file_bytes: { args: { path: string }; result: string }
+  zip_list: { args: { path: string }; result: ZipListing }
+  zip_read: { args: { path: string; inner: string }; result: string }
+  zip_extract: { args: { path: string; dest: string; entries: string[] | null }; result: ExtractReport }
+  list_volumes: { args: {}; result: Volume[] }
+  eject_volume: { args: { mount: string }; result: void }
+  open_terminal: { args: { path: string }; result: void }
+  transfer_items: { args: { paths: string[]; dstDir: string; mode: 'copy' | 'move'; allowSystem: boolean }; result: TransferResult }
+  copy_paths: { args: { paths: string[] }; result: void }
+  cut_paths: { args: { paths: string[] }; result: void }
+  paste_paths: { args: { targetDir: string; allowSystem: boolean }; result: string[] }
+  clipboard_info: { args: {}; result: ClipboardInfo }
+  clear_clipboard: { args: {}; result: void }
+  apply_plan: { args: { batchId: string; ops: ApplyPlanOp[]; allowSystem: boolean }; result: ApplyReport }
+  undo_plan: { args: { batchId: string; allowSystem: boolean }; result: ApplyReport }
+  gateway_base: { args: {}; result: string }
+  ai_get_config: { args: {}; result: AiProviderInfo[] }
+  ai_set_provider: { args: { id: string; baseUrl?: string; apiKey?: string }; result: void }
+  ai_add_provider: { args: { id: string; baseUrl: string; apiKey?: string }; result: void }
+  ai_remove_provider: { args: { id: string }; result: void }
+  build_info: { args: {}; result: BuildInfo }
+}
+
+type CommandArgs<K extends keyof TauriCommandMap> = TauriCommandMap[K]['args']
+type CommandResult<K extends keyof TauriCommandMap> = TauriCommandMap[K]['result']
+type InvokeArguments<K extends keyof TauriCommandMap> = keyof CommandArgs<K> extends never
+  ? []
+  : [args: CommandArgs<K>]
+
+export interface TauriCommandErrorShape {
+  code: 'tauri_command_failed'
+  command: string
+  message: string
+}
+
+/** Stable rejection shape for Rust command errors and Tauri IPC failures. */
+export class TauriCommandError extends Error implements TauriCommandErrorShape {
+  readonly code = 'tauri_command_failed' as const
+  readonly command: string
+
+  constructor(command: string, message: string) {
+    super(message)
+    this.name = 'TauriCommandError'
+    this.command = command
+  }
+
+  override toString(): string {
+    // Keep existing user-facing `String(error)` call sites message-only.
+    return this.message
+  }
+}
+
+function invokeCommand<K extends keyof TauriCommandMap>(
+  command: K,
+  ...args: InvokeArguments<K>
+): Promise<CommandResult<K>> {
+  return invoke(command, (args[0] ?? {}) as Record<string, unknown>).catch((error: unknown) => {
+    if (error instanceof TauriCommandError) throw error
+    const message = error instanceof Error ? error.message : String(error)
+    throw new TauriCommandError(command, message)
+  }) as Promise<CommandResult<K>>
+}
+
 export const listDir = (path: string, showHidden?: boolean) =>
-  invoke<FileEntry[]>('list_dir', { path, showHidden })
-export interface NativeFileIcon { path: string; dataUrl: string }
-export const getFileIcons = (paths: string[]) => invoke<NativeFileIcon[]>('file_icons', { paths })
-export const homeDir = () => invoke<string>('home_dir')
-export const fileInfo = (path: string) => invoke<FileInfo>('file_info', { path })
-export const getFileTags = (paths: string[]) => invoke<[string, FileTag[]][]>('get_file_tags', { paths })
-export const setFilesTags = (updates: { path: string; tags: FileTag[] }[]) => invoke<void>('set_files_tags', { updates, allowSystem: allowSystem() })
-export const copyFile = (src: string, dst: string) => invoke<void>('copy_file', { src, dst, allowSystem: allowSystem() })
-export const moveFile = (src: string, dst: string) => invoke<void>('move_file', { src, dst, allowSystem: allowSystem() })
+  invokeCommand('list_dir', { path, showHidden })
+export const homeDir = () => invokeCommand('home_dir')
+export const fileInfo = (path: string) => invokeCommand('file_info', { path })
+export const getFileTags = (paths: string[]) => invokeCommand('get_file_tags', { paths })
+export const setFilesTags = (updates: { path: string; tags: FileTag[] }[]) => invokeCommand('set_files_tags', { updates, allowSystem: allowSystem() })
+export const copyFile = (src: string, dst: string) => invokeCommand('copy_file', { src, dst, allowSystem: allowSystem() })
+export const moveFile = (src: string, dst: string) => invokeCommand('move_file', { src, dst, allowSystem: allowSystem() })
 export const rename = (path: string, newName: string) =>
-  invoke<void>('rename', { path, newName, allowSystem: allowSystem() })
-export const deleteToTrash = (path: string) => invoke<void>('delete_to_trash', { path, allowSystem: allowSystem() })
+  invokeCommand('rename', { path, newName, allowSystem: allowSystem() })
+export const deleteToTrash = (path: string) => invokeCommand('delete_to_trash', { path, allowSystem: allowSystem() })
 export const createFolder = (parent: string, name: string) =>
-  invoke<string>('create_folder', { parent, name, allowSystem: allowSystem() })
-export const readFileBytes = (path: string) => invoke<string>('read_file_bytes', { path })
-export const readTextFile = (path: string) => invoke<string>('read_text_file', { path })
-export const writeTextFile = (path: string, content: string) =>
-  invoke<void>('write_text_file', { path, content })
-export const revealInFinder = (path: string) => invoke<void>('reveal_in_finder', { path })
-export const openPath = (path: string) => invoke<void>('open_path', { path })
-export const connectSmb = (endpoint: string) => invoke<void>('connect_smb', { endpoint })
-export const disconnectVolume = (path: string) => invoke<void>('disconnect_volume', { path })
-export const quickLook = (path: string) => invoke<void>('quick_look', { path })
-export const diskSpace = (path: string) => invoke<DiskSpace>('disk_space', { path })
+  invokeCommand('create_folder', { parent, name, allowSystem: allowSystem() })
+export const readFileBytes = (path: string) => invokeCommand('read_file_bytes', { path })
+export const readTextFile = (path: string) => invokeCommand('read_text_file', { path })
+export const revealInFinder = (path: string) => invokeCommand('reveal_in_finder', { path })
+export const openPath = (path: string) => invokeCommand('open_path', { path })
+export const connectSmb = (endpoint: string) => invokeCommand('connect_smb', { endpoint })
+export const disconnectVolume = (path: string) => invokeCommand('disconnect_volume', { path })
+export const quickLook = (path: string) => invokeCommand('quick_look', { path })
+export const diskSpace = (path: string) => invokeCommand('disk_space', { path })
 
 export interface Volume {
   name: string
@@ -83,14 +169,14 @@ export interface Volume {
 export interface ZipEntryInfo { name: string; isDir: boolean; size: number; modified: number }
 export interface ZipListing { entries: ZipEntryInfo[]; truncated: boolean }
 export interface ExtractReport { extracted: number; skipped: string[] }
-export const zipList = (path: string) => invoke<ZipListing>('zip_list', { path })
-export const zipRead = (path: string, inner: string) => invoke<string>('zip_read', { path, inner })
+export const zipList = (path: string) => invokeCommand('zip_list', { path })
+export const zipRead = (path: string, inner: string) => invokeCommand('zip_read', { path, inner })
 export const zipExtract = (path: string, dest: string, entries?: string[] | null) =>
-  invoke<ExtractReport>('zip_extract', { path, dest, entries: entries ?? null })
+  invokeCommand('zip_extract', { path, dest, entries: entries ?? null })
 
-export const listVolumes = () => invoke<Volume[]>('list_volumes')
-export const ejectVolume = (mount: string) => invoke<void>('eject_volume', { mount })
-export const openTerminal = (path: string) => invoke<void>('open_terminal', { path })
+export const listVolumes = () => invokeCommand('list_volumes')
+export const ejectVolume = (mount: string) => invokeCommand('eject_volume', { mount })
+export const openTerminal = (path: string) => invokeCommand('open_terminal', { path })
 
 export interface TrashItem {
   id: string
@@ -100,10 +186,10 @@ export interface TrashItem {
   size: number
   modified: number
 }
-export const trashList = () => invoke<TrashItem[]>('trash_list')
-export const trashRestore = (id: string) => invoke<string>('trash_restore', { id })
-export const trashDeleteForever = (id: string) => invoke<void>('trash_delete_forever', { id })
-export const trashEmpty = () => invoke<void>('trash_empty')
+export const trashList = () => invokeCommand('trash_list')
+export const trashRestore = (id: string) => invokeCommand('trash_restore', { id })
+export const trashDeleteForever = (id: string) => invokeCommand('trash_delete_forever', { id })
+export const trashEmpty = () => invokeCommand('trash_empty')
 export interface TransferFailure {
   src: string
   error: string
@@ -111,24 +197,25 @@ export interface TransferFailure {
 export interface TransferResult {
   applied: number
   failures: TransferFailure[]
-  nonAtomic?: boolean
+  nonAtomic: boolean
 }
 export const transferItems = (paths: string[], dstDir: string, mode: 'copy' | 'move') =>
-  invoke<TransferResult>('transfer_items', { paths, dstDir, mode, allowSystem: allowSystem() })
-export const gatewayBase = () => invoke<string>('gateway_base')
+  invokeCommand('transfer_items', { paths, dstDir, mode, allowSystem: allowSystem() })
+export const gatewayBase = () => invokeCommand('gateway_base')
 
-export interface ApplyFailedOp { id: string; code?: string; error: string }
-export interface ApplyReport { applied: number; skipped: number; failed: ApplyFailedOp[]; batchId: string; total?: number; durationMs?: number; phaseCounts?: Record<string, number> }
+export interface ApplyFailedOp { id: string; code: string; error: string }
+export interface ApplyReport { applied: number; skipped: number; failed: ApplyFailedOp[]; batchId: string; total: number; durationMs: number; phaseCounts: Record<string, number> }
 export interface PlanProgress { done: number; total: number; currentId: string }
-export const applyPlan = (batchId: string, ops: PlanOp[]) =>
-  invoke<ApplyReport>('apply_plan', { batchId, ops, allowSystem: allowSystem() })
+export type ApplyPlanOp = PlanOp | { id: string; kind: 'createFile'; path: string; content: string; included: boolean }
+export const applyPlan = (batchId: string, ops: ApplyPlanOp[]) =>
+  invokeCommand('apply_plan', { batchId, ops, allowSystem: allowSystem() })
 export const undoPlan = (batchId: string) =>
-  invoke<ApplyReport>('undo_plan', { batchId, allowSystem: allowSystem() })
+  invokeCommand('undo_plan', { batchId, allowSystem: allowSystem() })
 export const onPlanProgress = (cb: (p: PlanProgress) => void) =>
   listen<PlanProgress>('plan-progress', (e) => cb(e.payload))
 
 export interface BuildInfo { version: string; buildEpoch: number; commit: string; branch: string }
-export const buildInfo = () => invoke<BuildInfo>('build_info')
+export const buildInfo = () => invokeCommand('build_info')
 
 export interface AiProviderInfo {
   id: string
@@ -139,20 +226,20 @@ export interface AiProviderInfo {
   cloud: boolean
   builtin: boolean
 }
-export const aiGetConfig = () => invoke<AiProviderInfo[]>('ai_get_config')
+export const aiGetConfig = () => invokeCommand('ai_get_config')
 export const aiSetProvider = (id: string, baseUrl?: string, apiKey?: string) =>
-  invoke<void>('ai_set_provider', { id, baseUrl, apiKey })
+  invokeCommand('ai_set_provider', { id, baseUrl, apiKey })
 export const aiAddProvider = (id: string, baseUrl: string, apiKey?: string) =>
-  invoke<void>('ai_add_provider', { id, baseUrl, apiKey })
+  invokeCommand('ai_add_provider', { id, baseUrl, apiKey })
 export const aiRemoveProvider = (id: string) =>
-  invoke<void>('ai_remove_provider', { id })
+  invokeCommand('ai_remove_provider', { id })
 
-export const copyPaths = (paths: string[]) => invoke<void>('copy_paths', { paths })
-export const cutPaths = (paths: string[]) => invoke<void>('cut_paths', { paths })
+export const copyPaths = (paths: string[]) => invokeCommand('copy_paths', { paths })
+export const cutPaths = (paths: string[]) => invokeCommand('cut_paths', { paths })
 export const pastePaths = (targetDir: string) =>
-  invoke<string[]>('paste_paths', { targetDir, allowSystem: allowSystem() })
-export const getClipboard = () => invoke<ClipboardInfo>('clipboard_info')
-export const clearClipboard = () => invoke<void>('clear_clipboard')
+  invokeCommand('paste_paths', { targetDir, allowSystem: allowSystem() })
+export const getClipboard = () => invokeCommand('clipboard_info')
+export const clearClipboard = () => invokeCommand('clear_clipboard')
 
 export function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`

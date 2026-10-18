@@ -24,6 +24,7 @@ The system SHALL keep all user preferences in one config object persisted via th
 #### Scenario: Store unavailable falls back
 - **WHEN** the native store is not available
 - **THEN** the same config persists via local storage without breaking the UI
+- **AND** subscribed UI components are notified when a setting changes
 
 #### Scenario: Upgrade from legacy keys
 - **WHEN** the app first starts with existing legacy per-key preferences but no unified config

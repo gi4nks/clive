@@ -1,11 +1,11 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod commands {
+    pub mod archives;
     pub mod clipboard;
     pub mod filesystem;
     pub mod plan;
     pub mod trash;
-    pub mod archives;
 }
 
 mod gateway;
@@ -14,14 +14,23 @@ use commands::clipboard::ClipboardState;
 use gateway::GatewayHandle;
 
 /// Build info reported by the running backend (proves how fresh the Rust binary is).
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct BuildInfo {
+    version: String,
+    build_epoch: u64,
+    commit: String,
+    branch: String,
+}
+
 #[tauri::command]
-fn build_info() -> serde_json::Value {
-    serde_json::json!({
-        "version": env!("CLIVE_VERSION"),
-        "buildEpoch": env!("CLIVE_BUILD_EPOCH").parse::<u64>().unwrap_or(0),
-        "commit": env!("CLIVE_GIT_COMMIT"),
-        "branch": env!("CLIVE_GIT_BRANCH"),
-    })
+fn build_info() -> BuildInfo {
+    BuildInfo {
+        version: env!("CLIVE_VERSION").to_string(),
+        build_epoch: env!("CLIVE_BUILD_EPOCH").parse::<u64>().unwrap_or(0),
+        commit: env!("CLIVE_GIT_COMMIT").to_string(),
+        branch: env!("CLIVE_GIT_BRANCH").to_string(),
+    }
 }
 
 fn main() {
@@ -46,37 +55,35 @@ fn main() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            commands::filesystem::list_dir,
-            commands::filesystem::file_icons,
-            commands::filesystem::home_dir,
-            commands::filesystem::file_info,
-            commands::filesystem::get_file_tags,
-            commands::filesystem::set_files_tags,
-            commands::filesystem::copy_file,
-            commands::filesystem::move_file,
-            commands::filesystem::rename,
+            commands::filesystem::listing::list_dir,
+            commands::filesystem::macos::home_dir,
+            commands::filesystem::metadata::file_info,
+            commands::filesystem::tags::get_file_tags,
+            commands::filesystem::tags::set_files_tags,
+            commands::filesystem::transfers::copy_file,
+            commands::filesystem::transfers::move_file,
+            commands::filesystem::transfers::rename,
             commands::trash::delete_to_trash,
             commands::trash::trash_list,
             commands::trash::trash_restore,
             commands::trash::trash_delete_forever,
             commands::trash::trash_empty,
-            commands::filesystem::create_folder,
-            commands::filesystem::read_text_file,
-            commands::filesystem::write_text_file,
-            commands::filesystem::reveal_in_finder,
-            commands::filesystem::open_path,
-            commands::filesystem::connect_smb,
-            commands::filesystem::disconnect_volume,
-            commands::filesystem::quick_look,
-            commands::filesystem::disk_space,
-            commands::filesystem::read_file_bytes,
+            commands::filesystem::transfers::create_folder,
+            commands::filesystem::preview::read_text_file,
+            commands::filesystem::desktop::reveal_in_finder,
+            commands::filesystem::desktop::open_path,
+            commands::filesystem::volumes::connect_smb,
+            commands::filesystem::volumes::disconnect_volume,
+            commands::filesystem::desktop::quick_look,
+            commands::filesystem::volumes::disk_space,
+            commands::filesystem::preview::read_file_bytes,
             commands::archives::zip_list,
             commands::archives::zip_read,
             commands::archives::zip_extract,
-            commands::filesystem::list_volumes,
-            commands::filesystem::eject_volume,
-            commands::filesystem::open_terminal,
-            commands::filesystem::transfer_items,
+            commands::filesystem::volumes::list_volumes,
+            commands::filesystem::volumes::eject_volume,
+            commands::filesystem::desktop::open_terminal,
+            commands::filesystem::transfers::transfer_items,
             commands::clipboard::copy_paths,
             commands::clipboard::cut_paths,
             commands::clipboard::paste_paths,

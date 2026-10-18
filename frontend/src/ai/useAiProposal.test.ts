@@ -1,80 +1,66 @@
-import { describe, expect, it, vi } from 'vitest'
-import { applyProposal } from './useAiProposal.js'
+import { describe, expect, it, vi, beforeEach } from 'vitest'
+import { act, renderHook } from '@testing-library/react'
+import { applyPlan, undoPlan } from '../api.js'
+import { applyProposal, useAiProposal } from './useAiProposal.js'
 import type { AiProposal } from './proposal.js'
-import type { Fs } from './apply.js'
 import { snapshotContext } from './context.js'
 
+vi.mock('../api.js', () => ({
+  applyPlan: vi.fn(),
+  undoPlan: vi.fn(),
+  listVolumes: vi.fn(async () => []),
+}))
+vi.mock('./reviewProposal.js', () => ({ reviewProposal: vi.fn(async () => true) }))
+
 const proposal = (operations: AiProposal['operations']): AiProposal => ({
-  id: 'test:proposal',
-  origin: 'chat',
-  rootPath: '/d',
-  risk: 'medium',
-  review: 'compact',
-  operations,
-  warnings: [],
-  requiresExplicitConfirmation: false,
+  id: 'test:proposal', origin: 'chat', rootPath: '/d', risk: 'medium', review: 'compact',
+  operations, warnings: [], requiresExplicitConfirmation: false,
 })
 
-function io() {
-  const fs: Fs = {
-    exists: vi.fn(async () => true),
-    rename: vi.fn(async () => {}),
-    move: vi.fn(async () => {}),
-    createFolder: vi.fn(async (_parent, name) => name),
-  }
-  return {
-    fs,
-    writeFile: vi.fn(async () => {}),
-    moveToTrash: vi.fn(async () => {}),
-  }
-}
+beforeEach(() => {
+  vi.mocked(applyPlan).mockReset()
+  vi.mocked(undoPlan).mockReset()
+  vi.mocked(applyPlan).mockResolvedValue({ applied: 1, skipped: 0, failed: [], batchId: 'batch-1' })
+  vi.mocked(undoPlan).mockResolvedValue({ applied: 1, skipped: 0, failed: [], batchId: 'batch-1' })
+})
 
 describe('applyProposal', () => {
-  it('normalizes semantic operations into the existing apply adapter', async () => {
-    const deps = io()
-    const result = await applyProposal(deps, proposal([
-      { id: 'f', kind: 'createFolder', path: '/d/one/two' },
+  it('normalizes every semantic operation into one durable Rust batch', async () => {
+    const operations: AiProposal['operations'] = [
+      { id: 'f', kind: 'createFolder', path: '/d/docs' },
       { id: 'r', kind: 'rename', path: '/d/a.txt', newName: 'b.txt' },
-      { id: 'm', kind: 'move', path: '/d/b.txt', destDir: '/d/one' },
-    ]))
+      { id: 'm', kind: 'move', path: '/d/b.txt', destDir: '/d/docs', destName: 'renamed.txt' },
+      { id: 'c', kind: 'createFile', path: '/d/docs/note.md', content: 'hello' },
+      { id: 't', kind: 'trash', path: '/d/old.md' },
+    ]
+    const result = await applyProposal({}, proposal(operations))
 
-    expect(deps.fs.createFolder).toHaveBeenNthCalledWith(1, '/d', 'one')
-    expect(deps.fs.createFolder).toHaveBeenNthCalledWith(2, '/d/one', 'two')
-    expect(deps.fs.rename).toHaveBeenCalledWith('/d/a.txt', 'b.txt')
-    expect(deps.fs.move).toHaveBeenCalledWith('/d/b.txt', '/d/one/b.txt')
-    expect(result.failures).toEqual([])
-    expect(result.applied).toBe(4)
+    expect(applyPlan).toHaveBeenCalledTimes(1)
+    const [batchId, ops] = vi.mocked(applyPlan).mock.calls[0]
+    expect(batchId.length).toBeGreaterThan(10)
+    expect(ops).toEqual([
+      { id: 'f:parent:0', kind: 'createFolder', path: '/d/docs', included: true },
+      { id: 'r', kind: 'rename', path: '/d/a.txt', newName: 'b.txt', included: true },
+      { id: 'm', kind: 'move', path: '/d/b.txt', destDir: '/d/docs', destName: 'renamed.txt', included: true },
+      { id: 'c', kind: 'createFile', path: '/d/docs/note.md', content: 'hello', included: true },
+      { id: 't', kind: 'trash', path: '/d/old.md', included: true },
+    ])
+    expect(result).toMatchObject({ applied: 1, failures: [], batchId: 'batch-1' })
   })
 
-  it('executes generated files and trash through direct adapters', async () => {
-    const deps = io()
-    const result = await applyProposal(deps, proposal([
-      { id: 'c', kind: 'createFile', path: '/d/note.md', content: 'hello' },
-      { id: 't', kind: 'trash', path: '/d/old.md' },
+  it('maps Rust operation failures to proposal failures', async () => {
+    vi.mocked(applyPlan).mockResolvedValue({
+      applied: 1, skipped: 0, batchId: 'batch-2',
+      failed: [{ id: 'trash-1', code: 'filesystem', error: 'permission denied' }],
+    })
+    const result = await applyProposal({}, proposal([
+      { id: 'trash-1', kind: 'trash', path: '/d/old.md' },
     ]))
-
-    expect(deps.writeFile).toHaveBeenCalledWith('/d/note.md', 'hello')
-    expect(deps.moveToTrash).toHaveBeenCalledWith('/d/old.md')
-    expect(result.directApplied).toBe(2)
-    expect(result.applied).toBe(2)
-  })
-
-  it('reports direct operation failures without hiding successful operations', async () => {
-    const deps = io()
-    deps.moveToTrash.mockRejectedValueOnce(new Error('permission denied'))
-    const result = await applyProposal(deps, proposal([
-      { id: 'c', kind: 'createFile', path: '/d/note.md', content: 'hello' },
-      { id: 't', kind: 'trash', path: '/d/old.md' },
-    ]))
-
-    expect(result.applied).toBe(1)
-    expect(result.failures[0]?.error).toContain('permission denied')
+    expect(result.failures).toEqual([{ op: 'trash-1', error: 'permission denied' }])
   })
 
   it('refuses to apply a proposal against a changed context', async () => {
-    const deps = io()
     const result = await applyProposal({
-      ...deps,
       getContext: () => ({ rootPath: '/d', entries: [{ name: 'new.txt', path: '/d/new.txt' }], guardOn: false }),
       contextChangedMessage: 'context changed',
     }, {
@@ -83,6 +69,23 @@ describe('applyProposal', () => {
     })
 
     expect(result.failures).toEqual([{ op: 'test:proposal', error: 'context changed' }])
-    expect(deps.fs.rename).not.toHaveBeenCalled()
+    expect(applyPlan).not.toHaveBeenCalled()
+  })
+})
+
+describe('useAiProposal', () => {
+  it('undoes through the same Rust batch id and preserves partial failures for retry', async () => {
+    const { result } = renderHook(() => useAiProposal({}))
+    await act(async () => { await result.current.apply(proposal([{ id: 'r', kind: 'rename', path: '/d/a', newName: 'b' }])) })
+    expect(result.current.result?.batchId).toBe('batch-1')
+
+    vi.mocked(undoPlan).mockResolvedValueOnce({
+      applied: 0, skipped: 0, batchId: 'batch-1',
+      failed: [{ id: 'r', code: 'filesystem', error: 'target exists' }],
+    })
+    await act(async () => { await result.current.undo() })
+    expect(undoPlan).toHaveBeenCalledWith('batch-1')
+    expect(result.current.phase).toBe('failed')
+    expect(result.current.result?.batchId).toBe('batch-1')
   })
 })

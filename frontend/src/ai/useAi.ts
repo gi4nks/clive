@@ -19,9 +19,9 @@ import {
   summarize,
   type OrganizePlan,
 } from './actions'
-import { collectFileContents, fs, moveToTrash, writeFile } from './fs'
+import { collectFileContents } from './fs'
 import { modelCapabilities, visionGate } from './capabilities'
-import { validateNewName, type InverseOp } from './safety'
+import { validateNewName } from './safety'
 import { createProposal } from './proposal.js'
 import { useAiProposal } from './useAiProposal.js'
 import { snapshotContext } from './context.js'
@@ -63,7 +63,7 @@ export function useAi(deps: AiDeps) {
   const [organize, setOrganize] = useState<OrganizePlan | null>(null)
   const [excluded, setExcluded] = useState<Set<string>>(new Set())
   const [gen, setGen] = useState<{ name: string; body: string } | null>(null)
-  const [journal, setJournal] = useState<InverseOp[] | null>(null)
+  const [journal, setJournal] = useState<string | null>(null)
   const [error, setError] = useState('')
   const abortRef = useRef<AbortController | null>(null)
   useEffect(() => {
@@ -78,9 +78,6 @@ export function useAi(deps: AiDeps) {
     location: depsRef.current.location,
   })
   const proposal = useAiProposal({
-    fs,
-    writeFile,
-    moveToTrash,
     getContext: currentContext,
     contextChangedMessage: i18n.t('ai.contextChanged'),
   })
@@ -248,7 +245,7 @@ export function useAi(deps: AiDeps) {
         context: proposalContextRef.current ?? currentContext(),
       }))
       if (res.applied) {
-        setJournal(res.undo)
+        setJournal(res.batchId)
         depsRef.current.setStatus(i18n.t('rename.applied', { count: res.applied }), 'success')
         depsRef.current.refresh()
       }
@@ -308,7 +305,7 @@ export function useAi(deps: AiDeps) {
         }))
         if (res.applied) {
           setRows(null)
-          setJournal(res.undo)
+          setJournal(res.batchId)
           d.setStatus(i18n.t('ai.renamed', { count: res.applied }), 'success')
           d.refresh()
         }
@@ -338,7 +335,7 @@ export function useAi(deps: AiDeps) {
         }))
         if (res.applied) {
           setOrganize(null)
-          setJournal(res.undo)
+          setJournal(res.batchId)
           d.setStatus(i18n.t('ai.organized', { count: moves.length }), 'success')
           d.refresh()
         }
@@ -359,9 +356,14 @@ export function useAi(deps: AiDeps) {
   const undo = async () => {
     if (!journal) return
     const res = await proposal.undo()
-    setJournal(null)
-    const applied = res?.applied ?? 0
-    depsRef.current.setStatus(applied ? i18n.t('ai.restored') : i18n.t('ai.nothingToRestore'), applied ? 'success' : 'info')
+    if (!res) return
+    if (res.failures.length) {
+      depsRef.current.setStatus(i18n.t('ai.errors', { count: res.failures.length }), 'error')
+    } else {
+      setJournal(null)
+      const applied = res.applied
+      depsRef.current.setStatus(applied ? i18n.t('ai.restored') : i18n.t('ai.nothingToRestore'), applied ? 'success' : 'info')
+    }
     depsRef.current.refresh()
   }
 

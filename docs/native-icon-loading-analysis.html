@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Icone Clive — decisione di design</title>
+  <style>
+    :root { color-scheme: light dark; font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    body { max-width: 900px; margin: 0 auto; padding: 2.5rem 1.25rem 4rem; }
+    h1, h2 { line-height: 1.2; }
+    h1 { font-size: clamp(2rem, 5vw, 3rem); }
+    .lead { font-size: 1.15rem; opacity: .82; }
+    .callout { padding: 1rem 1.2rem; border-left: 4px solid #5688bd; background: color-mix(in srgb, CanvasText 6%, Canvas); border-radius: .4rem; }
+    table { width: 100%; border-collapse: collapse; margin: 1rem 0 2rem; }
+    th, td { text-align: left; vertical-align: top; border-bottom: 1px solid color-mix(in srgb, CanvasText 20%, Canvas); padding: .7rem; }
+    th { font-size: .9rem; }
+    code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .meta { opacity: .7; font-size: .9rem; }
+  </style>
+</head>
+<body>
+  <header>
+    <p class="meta">Clive · Decisione di design · 18 ottobre 2026</p>
+    <h1>Icone di Clive, con un aspetto più da Finder</h1>
+    <p class="lead">Icone vettoriali disegnate da Clive: forme morbide, colori più sobri e dettagli specifici per il tipo di file.</p>
+  </header>
+
+  <section>
+    <h2>Decisione</h2>
+    <div class="callout"><strong>Usare sempre l'illustrazione di Clive.</strong> Le icone native macOS hanno introdotto un cambio evidente dopo il primo rendering e non mantenevano una famiglia visiva coerente con il file manager. Clive ora disegna le proprie icone in SVG sincrono; la vista non aspetta AppKit e non sostituisce un'icona dopo la comparsa della riga.</div>
+    <p>Le cartelle usano una sagoma a linguetta con volume leggero e toni polverosi. I file usano un foglio avorio con bordo sottile, angolo ripiegato e ombra appena accennata. Il segno di categoria — griglia, paesaggio, nota musicale, parentesi di codice, cerniera, ingranaggio o sigla PDF — occupa il foglio senza incorniciarlo in una tessera colorata.</p>
+  </section>
+
+  <section>
+    <h2>Confronto</h2>
+    <table>
+      <thead><tr><th>Approccio</th><th>Vantaggi</th><th>Limiti</th><th>Scelta</th></tr></thead>
+      <tbody>
+        <tr><td>Icone associate da macOS</td><td>Fedeli al Finder e all'app predefinita di ogni tipo.</td><td>Arrivano dopo il listing; possono cambiare aspetto in ritardo; associano visivamente Clive alle app installate.</td><td>Rimosso: non corrisponde al comportamento e allo stile desiderati.</td></tr>
+        <tr><td>Tessera colorata con glifo bianco</td><td>Molto leggibile e semplice da estendere.</td><td>Somiglia a un set di icone web generico; la tessera domina la forma del file.</td><td>Superato dalla nuova famiglia illustrata.</td></tr>
+        <tr><td>Icone vettoriali disegnate da Clive</td><td>Stile coerente, rendering immediato, forme e segni controllati dal progetto.</td><td>Non mostra l'icona dell'app predefinita; nuove categorie richiedono un disegno dedicato.</td><td><strong>Scelta</strong>: famiglia condivisa con silhouette folder/document e accenti attenuati.</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>Confini tecnici</h2>
+    <p><code>FileIcon.tsx</code> determina la categoria da nome, estensione e tipo di voce, quindi disegna l'SVG. <code>FileList.tsx</code> mostra l'icona assieme alla riga senza richieste aggiuntive. Il comando Tauri <code>file_icons</code>, la serializzazione AppKit/base64 e la cache frontend sono stati rimossi; il contratto Tauri non espone più il comando.</p>
+    <p>La mappatura delle categorie resta vicina all'illustrazione per garantire Locality. I test coprono classificazione e rendering SVG; una revisione visiva in una finestra Clive resta la verifica utile per regolare proporzioni e contrasto su dimensioni reali.</p>
+  </section>
+
+  <footer class="meta"><p>Riferimenti: <code>frontend/src/FileIcon.tsx</code>, <code>frontend/src/FileList.tsx</code>, <code>frontend/src/FileIcon.test.tsx</code>, <code>openspec/specs/react-file-list/spec.md</code>.</p></footer>
+</body>
+</html>

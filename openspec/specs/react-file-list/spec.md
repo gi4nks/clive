@@ -8,21 +8,29 @@ Allows users to browse and select files in the File Manager interface with multi
 ### Requirement: File list displays files with name, size, and kind
 The system SHALL display a list of files with their name, size, and file kind/kype.
 
-### Requirement: File list uses native macOS file icons
-On macOS, the system SHALL display each file and folder's icon supplied by
-macOS, including the icon associated with its type or default application.
-Icon loading SHALL happen after the file list is visible and SHALL be cached
-for unchanged entries. If the native icon is unavailable, the system SHALL
-display its built-in type icon.
+### Requirement: File list uses Clive's own file icons
+The system SHALL draw file and folder icons with Clive-owned vector artwork.
+Icons SHALL use a consistent, subdued visual style and distinct shapes or marks
+for common file types and system folders. Card-mode icons SHALL use most of the
+available 80px icon area instead of remaining at compact row size. Rendering SHALL be synchronous and
+SHALL NOT replace icons with operating-system-provided images after the rows
+appear.
 
-#### Scenario: Native icons load for a directory listing
-- **WHEN** the file list contains files or folders on macOS
-- **THEN** Clive requests their icons from macOS in batches and replaces the
-  built-in icons as results arrive
+#### Scenario: A directory listing renders Clive icons
+- **WHEN** the file list contains files or folders
+- **THEN** each row immediately displays Clive's vector icon for that item kind
+- **AND** the icon does not change after the row appears
 
-#### Scenario: Native icon is unavailable
-- **WHEN** a native icon cannot be loaded for an entry
-- **THEN** the built-in type icon remains visible
+#### Scenario: A file type has a dedicated mark
+- **WHEN** a file is a PDF, image, code file, document, spreadsheet, archive,
+  media file, or other supported type
+- **THEN** its Clive icon uses a distinctive mark while retaining the shared
+  paper or media silhouette
+
+#### Scenario: Card mode enlarges the item's icon
+- **WHEN** the file list is shown in card mode
+- **THEN** the Clive icon is rendered at 76×76 px inside its 80×80 px icon area
+- **AND** category-specific artwork remains visible at that size
 
 #### Scenario: File list renders correctly
 - **WHEN** the file list component mounts with a non-empty file array

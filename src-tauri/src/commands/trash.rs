@@ -5,7 +5,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-use crate::commands::filesystem::{is_protected, move_path, normalize, protected_err};
+use crate::commands::filesystem::path_safety::{is_protected, normalize, protected_err};
+use crate::commands::filesystem::transfers::move_path;
 
 /// A single trashed item tracked by clive's own recycle bin.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -42,7 +43,9 @@ pub(crate) fn trash_slot_dir() -> PathBuf {
     if let Some(dir) = std::env::var_os("CLIVE_TRASH_DIR") {
         return PathBuf::from(dir);
     }
-    let home = std::env::var_os("HOME").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("/"));
+    let home = std::env::var_os("HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("/"));
     home.join(".Trash")
 }
 
@@ -53,7 +56,9 @@ fn journal_path() -> PathBuf {
     if let Some(p) = std::env::var_os("CLIVE_TRASH_JOURNAL") {
         return PathBuf::from(p);
     }
-    let home = std::env::var_os("HOME").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("/"));
+    let home = std::env::var_os("HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("/"));
     home.join(".clive").join("trash").join("journal.json")
 }
 
@@ -132,7 +137,10 @@ pub fn restore_target(original: &Path, exists: impl Fn(&Path) -> bool) -> PathBu
         return original.to_path_buf();
     }
     let parent = original.parent().unwrap_or_else(|| Path::new("/"));
-    let file_name = original.file_name().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "item".to_string());
+    let file_name = original
+        .file_name()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "item".to_string());
     let (stem, ext) = split_name(&file_name, false);
     let mut i = 1;
     loop {
@@ -166,8 +174,7 @@ pub fn delete_to_trash(path: String, allow_system: bool) -> Result<(), String> {
         .unwrap_or_else(|| "item".to_string());
     let id = unique_in_dir(&root, &desired, meta.is_dir());
     let slot = root.join(&id);
-    let mount_identity = crate::commands::filesystem::mount_identity(&src)?;
-    move_path(&src, &slot).map_err(|e| format!("Move to trash failed: {e}"))?;
+    let mount_identity = crate::commands::filesystem::path_safety::mount_identity(&src)?;
 
     let item = TrashItem {
         mount_identity,
@@ -184,9 +191,15 @@ pub fn delete_to_trash(path: String, allow_system: bool) -> Result<(), String> {
             .unwrap_or(0),
     };
     let jpath = journal_path();
-    let mut items = read_journal(&jpath);
-    items.push(item);
-    write_journal(&jpath, &items)
+    move_to_trash_and_record(
+        &src,
+        &slot,
+        item,
+        &jpath,
+        |from, to| move_path(from, to).map_err(|e| e.to_string()),
+        read_journal,
+        write_journal,
+    )
 }
 
 /// List trash items, dropping records whose slot file no longer exists.
@@ -195,7 +208,11 @@ pub fn trash_list() -> Vec<TrashItem> {
     let jpath = journal_path();
     let raw = read_journal(&jpath);
     let root = trash_slot_dir();
-    let mut items: Vec<TrashItem> = raw.iter().filter(|i| root.join(&i.id).exists()).cloned().collect();
+    let mut items: Vec<TrashItem> = raw
+        .iter()
+        .filter(|i| root.join(&i.id).exists())
+        .cloned()
+        .collect();
     // Persist the pruned view so stale entries don't linger.
     if items.len() != raw.len() {
         let _ = write_journal(&jpath, &items);
@@ -218,8 +235,12 @@ pub fn trash_restore(id: String) -> Result<String, String> {
         return Err("Item is no longer in the trash".to_string());
     }
     let original = PathBuf::from(&item.original_path);
-    crate::commands::filesystem::verify_mount_identity(&original, &item.mount_identity)?;
-    crate::commands::filesystem::require_mounted_path(&original).map_err(|e| e.to_string())?;
+    crate::commands::filesystem::path_safety::verify_mount_identity(
+        &original,
+        &item.mount_identity,
+    )?;
+    crate::commands::filesystem::path_safety::require_mounted_path(&original)
+        .map_err(|e| e.to_string())?;
     if let Some(parent) = original.parent() {
         fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
@@ -249,11 +270,61 @@ pub fn trash_empty() -> Result<(), String> {
     let jpath = journal_path();
     let items = read_journal(&jpath);
     let root = trash_slot_dir();
-    for item in &items {
-        let _ = remove_slot(&root.join(&item.id));
+    empty_trash_items(&items, &root, &jpath, remove_slot, write_journal)
+}
+
+fn move_to_trash_and_record(
+    src: &Path,
+    slot: &Path,
+    item: TrashItem,
+    jpath: &Path,
+    move_item: impl Fn(&Path, &Path) -> Result<(), String>,
+    read_items: impl Fn(&Path) -> Vec<TrashItem>,
+    write_items: impl Fn(&Path, &[TrashItem]) -> Result<(), String>,
+) -> Result<(), String> {
+    let mut items = read_items(jpath);
+    items.push(item.clone());
+    write_items(jpath, &items)?;
+
+    if let Err(move_error) = move_item(src, slot) {
+        items.pop();
+        if let Err(journal_error) = write_items(jpath, &items) {
+            return Err(format!(
+                "Move to trash failed: {move_error}; journal cleanup failed: {journal_error}"
+            ));
+        }
+        return Err(format!("Move to trash failed: {move_error}"));
     }
-    write_journal(&jpath, &[])?;
+
     Ok(())
+}
+
+fn empty_trash_items(
+    items: &[TrashItem],
+    root: &Path,
+    jpath: &Path,
+    mut remove: impl FnMut(&Path) -> Result<(), String>,
+    write_items: impl Fn(&Path, &[TrashItem]) -> Result<(), String>,
+) -> Result<(), String> {
+    let mut remaining = Vec::new();
+    let mut first_error = None;
+
+    for item in items {
+        match remove(&root.join(&item.id)) {
+            Ok(()) => {}
+            Err(error) => {
+                first_error.get_or_insert(error);
+                remaining.push(item.clone());
+            }
+        }
+    }
+
+    write_items(jpath, &remaining)?;
+    if let Some(error) = first_error {
+        Err(format!("Could not remove every item from trash: {error}"))
+    } else {
+        Ok(())
+    }
 }
 
 fn remove_slot(path: &Path) -> Result<(), String> {
@@ -364,11 +435,17 @@ mod tests {
         delete_to_trash(d.to_string_lossy().into_owned(), true).unwrap();
         assert_eq!(trash_list().len(), 2);
         let slot_count = fs::read_dir(&tdir).map(|rd| rd.count()).unwrap_or(0);
-        assert!(slot_count >= 2, "expected at least 2 slots, got {slot_count}");
+        assert!(
+            slot_count >= 2,
+            "expected at least 2 slots, got {slot_count}"
+        );
 
         trash_empty().unwrap();
 
-        assert!(trash_list().is_empty(), "journal should be empty after empty");
+        assert!(
+            trash_list().is_empty(),
+            "journal should be empty after empty"
+        );
         // every slot file/dir must be gone (journal lives outside the slot dir)
         let leftover: Vec<_> = fs::read_dir(&tdir)
             .unwrap()
@@ -380,6 +457,140 @@ mod tests {
         std::env::remove_var("CLIVE_TRASH_DIR");
         std::env::remove_var("CLIVE_TRASH_JOURNAL");
         let _ = fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn trash_empty_keeps_failed_removal_in_journal_and_can_retry() {
+        let base =
+            std::env::temp_dir().join(format!("clive-trash-empty-fail-{}", std::process::id()));
+        let root = base.join("trash");
+        let jpath = base.join("journal.json");
+        fs::create_dir_all(&root).unwrap();
+        fs::write(root.join("failed.txt"), b"keep for retry").unwrap();
+        fs::write(root.join("removed.txt"), b"remove").unwrap();
+        let items = vec![test_item("failed.txt"), test_item("removed.txt")];
+        write_journal(&jpath, &items).unwrap();
+
+        let result = empty_trash_items(
+            &items,
+            &root,
+            &jpath,
+            |path| {
+                if path.file_name().unwrap() == "failed.txt" {
+                    Err("simulated permission error".to_string())
+                } else {
+                    remove_slot(path)
+                }
+            },
+            write_journal,
+        );
+
+        assert!(result.is_err());
+        assert!(root.join("failed.txt").exists());
+        assert!(!root.join("removed.txt").exists());
+        assert_eq!(read_journal(&jpath), vec![test_item("failed.txt")]);
+
+        empty_trash_items(
+            &read_journal(&jpath),
+            &root,
+            &jpath,
+            remove_slot,
+            write_journal,
+        )
+        .unwrap();
+        assert!(!root.join("failed.txt").exists());
+        assert!(read_journal(&jpath).is_empty());
+
+        fs::remove_dir_all(base).unwrap();
+    }
+
+    #[test]
+    fn trash_empty_journal_write_failure_leaves_retryable_records() {
+        let base = std::env::temp_dir().join(format!(
+            "clive-trash-empty-journal-fail-{}",
+            std::process::id()
+        ));
+        let root = base.join("trash");
+        let jpath = base.join("journal.json");
+        fs::create_dir_all(&root).unwrap();
+        fs::write(root.join("removed.txt"), b"remove me").unwrap();
+        fs::write(root.join("remaining.txt"), b"keep for retry").unwrap();
+        let items = vec![test_item("removed.txt"), test_item("remaining.txt")];
+        write_journal(&jpath, &items).unwrap();
+
+        let result = empty_trash_items(
+            &items,
+            &root,
+            &jpath,
+            |path| {
+                if path.file_name().unwrap() == "remaining.txt" {
+                    Err("simulated permission error".to_string())
+                } else {
+                    remove_slot(path)
+                }
+            },
+            |_, _| Err("simulated journal persistence failure".to_string()),
+        );
+
+        assert_eq!(result.unwrap_err(), "simulated journal persistence failure");
+        assert!(!root.join("removed.txt").exists());
+        assert!(root.join("remaining.txt").exists());
+        // The prior journal still includes the removed slot. Missing slots are
+        // idempotent on retry, while the surviving item remains recoverable.
+        assert_eq!(read_journal(&jpath), items);
+
+        empty_trash_items(
+            &read_journal(&jpath),
+            &root,
+            &jpath,
+            remove_slot,
+            write_journal,
+        )
+        .unwrap();
+
+        assert!(!root.join("remaining.txt").exists());
+        assert!(read_journal(&jpath).is_empty());
+        fs::remove_dir_all(base).unwrap();
+    }
+
+    #[test]
+    fn delete_to_trash_does_not_move_item_when_journal_write_fails() {
+        let base =
+            std::env::temp_dir().join(format!("clive-trash-journal-fail-{}", std::process::id()));
+        let src = base.join("home").join("important.txt");
+        let slot = base.join("trash").join("important.txt");
+        let jpath = base.join("journal.json");
+        fs::create_dir_all(src.parent().unwrap()).unwrap();
+        fs::create_dir_all(slot.parent().unwrap()).unwrap();
+        fs::write(&src, b"preserve me").unwrap();
+        let item = test_item("important.txt");
+
+        let result = move_to_trash_and_record(
+            &src,
+            &slot,
+            item,
+            &jpath,
+            |from, to| move_path(from, to).map_err(|e| e.to_string()),
+            |_| Vec::new(),
+            |_, _| Err("simulated journal failure".to_string()),
+        );
+
+        assert_eq!(result.unwrap_err(), "simulated journal failure");
+        assert_eq!(fs::read(&src).unwrap(), b"preserve me");
+        assert!(!slot.exists());
+        fs::remove_dir_all(base).unwrap();
+    }
+
+    fn test_item(id: &str) -> TrashItem {
+        TrashItem {
+            mount_identity: None,
+            id: id.to_string(),
+            original_path: format!("/original/{id}"),
+            deleted_at: 1,
+            is_dir: false,
+            size: 1,
+            modified: 1,
+        }
     }
 
     #[test]

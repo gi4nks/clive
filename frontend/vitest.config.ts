@@ -10,5 +10,13 @@ export default defineConfig({
     setupFiles: ['./src/test/setup.ts'],
     css: false,
     globals: false,
+    coverage: {
+      provider: 'v8',
+      include: ['src/**/*.{ts,tsx}'],
+      exclude: ['src/**/*.test.{ts,tsx}', 'src/test/**', 'src/**/*.d.ts'],
+      reporter: ['text', 'html'],
+      reportsDirectory: './coverage',
+      thresholds: { lines: 85 },
+    },
   },
 })
