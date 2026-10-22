@@ -1,0 +1,54 @@
+name: Quality gates
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: quality-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: Rust and frontend quality
+    runs-on: macos-14
+    timeout-minutes: 60
+
+    steps:
+      - name: Check out Clive and Wise
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Set up Rust and LLVM coverage tools
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: llvm-tools-preview
+
+      - name: Install project dependencies
+        run: make setup
+
+      - name: Run quality gates
+        run: make quality
+
+      - name: Upload coverage reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-reports
+          path: |
+            frontend/coverage/
+            target/coverage/rust/run.*/html/
+          if-no-files-found: warn
+          retention-days: 14
