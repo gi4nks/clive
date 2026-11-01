@@ -4,6 +4,8 @@ All notable changes to Clive are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows SemVer, with the version defined once in `tauri.conf.json` (build.rs enforces Cargo/package parity). Releases are tagged `vX.Y.Z` (annotated).
 
 ## [Unreleased]
+
+## [1.3.0] - 2026-11-01
 ### Added
 - Provider-specific model selection in **Settings → AI**, refreshing model catalogs directly from the gateway with load-state and capability metadata
 - Concurrent bounded gateway probes (`/healthz` and `/v1/models`), 12 MB vision request limits, LAN/private-IP local provider classification, and server-side cloud opt-in enforcement (`x-clive-cloud-allowed`)
