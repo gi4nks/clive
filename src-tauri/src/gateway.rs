@@ -8,10 +8,11 @@ use std::time::Instant;
 
 use axum::body::Body;
 use axum::extract::{Query, State};
-use axum::http::{header, Method, StatusCode};
+use axum::http::{header, HeaderMap, Method, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
+use futures_util::future::join_all;
 use futures_util::TryStreamExt;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -107,30 +108,96 @@ fn valid_provider_id(id: &str) -> bool {
     !id.starts_with("opencode")
 }
 
-/// A usable `http(s)://host[/path]` base URL.
-fn valid_base_url(url: &str) -> bool {
+/// Extract the normalized lowercase host portion from an `http(s)://` URL.
+fn extract_url_host(url: &str) -> Option<(String, Option<u16>)> {
     let rest = url
         .strip_prefix("http://")
-        .or_else(|| url.strip_prefix("https://"));
-    match rest {
-        Some(r) => {
-            !r.is_empty() && !r.contains(char::is_whitespace) && r.contains('.')
-                || r.starts_with("localhost")
-                || r.starts_with("[::1]")
-        }
-        None => false,
+        .or_else(|| url.strip_prefix("https://"))?;
+    if rest.is_empty() || rest.contains(char::is_whitespace) {
+        return None;
     }
+    let authority = rest.split(['/', '?', '#']).next().unwrap_or("");
+    if authority.is_empty() || authority.contains('@') {
+        return None;
+    }
+    if let Some(after_open) = authority.strip_prefix('[') {
+        let (ipv6, port_part) = after_open.split_once(']')?;
+        if ipv6.is_empty() || ipv6.parse::<std::net::Ipv6Addr>().is_err() {
+            return None;
+        }
+        let port = match port_part {
+            "" => None,
+            s => {
+                let p = s.strip_prefix(':')?.parse::<u16>().ok()?;
+                if p == 0 {
+                    return None;
+                }
+                Some(p)
+            }
+        };
+        return Some((format!("[{}]", ipv6.to_ascii_lowercase()), port));
+    }
+    let (host, port) = match authority.split_once(':') {
+        Some((h, p)) => {
+            if p.contains(':') {
+                return None;
+            }
+            let port = p.parse::<u16>().ok()?;
+            if port == 0 {
+                return None;
+            }
+            (h, Some(port))
+        }
+        None => (authority, None),
+    };
+    if host.is_empty()
+        || host.starts_with('.')
+        || host.ends_with('.')
+        || host.starts_with('-')
+        || host.ends_with('-')
+        || host.contains("..")
+        || !host
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'.' || b == b'-')
+    {
+        return None;
+    }
+    Some((host.to_ascii_lowercase(), port))
 }
 
-/// Loopback/local endpoints are not "cloud" for the privacy gate.
+/// A usable `http(s)://host[:port][/path]` base URL (including single-label LAN hosts).
+fn valid_base_url(url: &str) -> bool {
+    extract_url_host(url).is_some()
+}
+
+/// Loopback and private LAN endpoints are not "cloud" for the privacy gate.
 fn derive_cloud(base_url: &str) -> bool {
-    let b = base_url.to_lowercase();
-    !(b.starts_with("http://localhost")
-        || b.starts_with("https://localhost")
-        || b.starts_with("http://127.")
-        || b.starts_with("https://127.")
-        || b.starts_with("http://[::1]")
-        || b.starts_with("https://[::1]"))
+    let Some((host, _)) = extract_url_host(&base_url.to_ascii_lowercase()) else {
+        return true;
+    };
+    if host == "localhost"
+        || !host.contains('.')
+        || host.ends_with(".local")
+        || host.ends_with(".lan")
+        || host.ends_with(".home.arpa")
+    {
+        return false;
+    }
+    if let Some(ipv6_str) = host.strip_prefix('[').and_then(|s| s.strip_suffix(']')) {
+        if let Ok(ip) = ipv6_str.parse::<std::net::Ipv6Addr>() {
+            if ip.is_loopback()
+                || ip.is_unicast_link_local()
+                || (ip.segments()[0] & 0xfe00) == 0xfc00
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+    if let Ok(ip) = host.parse::<std::net::Ipv4Addr>() {
+        return !(ip.is_loopback() || ip.is_private() || ip.is_link_local());
+    }
+    true
 }
 
 /// The clive dotfile holding provider config (key/base per provider).
@@ -295,17 +362,16 @@ pub async fn start(handle: GatewayHandle) -> std::io::Result<u16> {
     let cors = CorsLayer::new()
         .allow_origin(Any)
         .allow_methods([Method::GET, Method::POST, Method::OPTIONS])
-        .allow_headers(Any);
+        .allow_headers(Any)
+        .expose_headers(Any);
 
     let app = Router::new()
         .route("/healthz", get(healthz))
         .route("/v1/models", get(models))
         .route("/v1/chat/completions", post(chat_completions))
         .layer(cors)
-        // A directory listing and plan prompt are intentionally compact. A
-        // hard cap prevents the loopback gateway from becoming an accidental
-        // unbounded memory sink when a caller sends a malformed request.
-        .layer(RequestBodyLimitLayer::new(2 * 1024 * 1024))
+        // Cap loopback payloads while allowing base64 vision attachments.
+        .layer(RequestBodyLimitLayer::new(12 * 1024 * 1024))
         .with_state(state);
 
     tauri::async_runtime::spawn(async move {
@@ -316,37 +382,34 @@ pub async fn start(handle: GatewayHandle) -> std::io::Result<u16> {
     Ok(port)
 }
 
-async fn probe(client: &reqwest::Client, p: &Provider) -> bool {
-    let mut req = client
-        .get(format!("{}/models", p.base_url))
-        .timeout(std::time::Duration::from_secs(10));
-    if let Some(k) = &p.api_key {
-        req = req.header(header::AUTHORIZATION, format!("Bearer {k}"));
-    }
-    matches!(req.send().await, Ok(r) if r.status().is_success())
-}
+const PROBE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(4);
 
-async fn model_available(client: &reqwest::Client, p: &Provider, model: &str) -> bool {
+async fn probe_provider(
+    client: &reqwest::Client,
+    p: &Provider,
+    need_models: bool,
+) -> (bool, Option<Vec<Value>>) {
     let mut req = client
         .get(format!("{}/models", p.base_url))
-        .timeout(std::time::Duration::from_secs(10));
+        .timeout(PROBE_TIMEOUT);
     if let Some(k) = &p.api_key {
         req = req.header(header::AUTHORIZATION, format!("Bearer {k}"));
     }
-    match req.send().await {
-        Ok(r) if r.status().is_success() => r
-            .json::<Value>()
-            .await
-            .ok()
-            .and_then(|v| {
-                v.get("data").and_then(Value::as_array).map(|a| {
-                    a.iter()
-                        .any(|m| m.get("id").and_then(Value::as_str) == Some(model))
-                })
-            })
-            .unwrap_or(false),
-        _ => false,
+    let Ok(r) = req.send().await else {
+        return (false, None);
+    };
+    if !r.status().is_success() {
+        return (false, None);
     }
+    if !need_models {
+        return (true, None);
+    }
+    let arr = r
+        .json::<Value>()
+        .await
+        .ok()
+        .and_then(|v| v.get("data").and_then(Value::as_array).cloned());
+    (true, arr)
 }
 
 async fn healthz(Query(query): Query<HealthQuery>, State(st): State<AppState>) -> Json<Value> {
@@ -358,12 +421,22 @@ async fn healthz_for(
     providers_list: &[Provider],
     query: HealthQuery,
 ) -> Json<Value> {
+    let target_provider = query.provider.as_deref();
+    let results = join_all(providers_list.iter().map(|p| {
+        let want_models = target_provider == Some(p.id.as_str()) && query.model.is_some();
+        probe_provider(&st.client, p, want_models)
+    }))
+    .await;
+
     let mut providers = serde_json::Map::new();
     let mut any = false;
-    for p in providers_list {
-        let ok = probe(&st.client, p).await;
+    let mut selected_models: Option<Vec<Value>> = None;
+    for (p, (ok, models)) in providers_list.iter().zip(results) {
         any |= ok;
         providers.insert(p.id.clone(), json!(ok));
+        if target_provider == Some(p.id.as_str()) {
+            selected_models = models;
+        }
     }
     let selected = match (query.provider.as_deref(), query.model.as_deref()) {
         (Some(provider_id), Some(model_id)) => {
@@ -371,14 +444,19 @@ async fn healthz_for(
                 .get(provider_id)
                 .and_then(Value::as_bool)
                 .unwrap_or(false);
-            let model_ok = if provider_ok {
-                match providers_list.iter().find(|p| p.id == provider_id) {
-                    Some(p) => model_available(&st.client, p, model_id).await,
-                    None => false,
-                }
-            } else {
-                false
-            };
+            let prefixed = format!("{provider_id}/{model_id}");
+            let model_ok = provider_ok
+                && selected_models
+                    .as_ref()
+                    .map(|arr| {
+                        arr.iter().any(|m| {
+                            matches!(
+                                m.get("id").and_then(Value::as_str),
+                                Some(id) if id == model_id || id == prefixed
+                            )
+                        })
+                    })
+                    .unwrap_or(false);
             json!({ "provider": provider_id, "model": model_id, "providerOk": provider_ok, "modelAvailable": model_ok })
         }
         _ => Value::Null,
@@ -386,32 +464,49 @@ async fn healthz_for(
     Json(json!({ "ok": any, "providers": providers, "selected": selected }))
 }
 
-/// Aggregate models from all providers, prefixing ids with `<provider>/`.
+/// Aggregate models from all providers concurrently, prefixing ids with `<provider>/`.
 async fn models(State(st): State<AppState>) -> Response {
     models_for(&st, &providers_now()).await
 }
 
 async fn models_for(st: &AppState, providers: &[Provider]) -> Response {
+    let results = join_all(
+        providers
+            .iter()
+            .map(|p| probe_provider(&st.client, p, true)),
+    )
+    .await;
     let mut data: Vec<Value> = Vec::new();
-    for p in providers {
-        let mut req = st
-            .client
-            .get(format!("{}/models", p.base_url))
-            .timeout(std::time::Duration::from_secs(10));
-        if let Some(k) = &p.api_key {
-            req = req.header(header::AUTHORIZATION, format!("Bearer {k}"));
+    for (p, (ok, maybe_arr)) in providers.iter().zip(results) {
+        if !ok {
+            continue;
         }
-        if let Ok(r) = req.send().await {
-            let v: Value = r.json().await.unwrap_or_else(|_| json!({ "data": [] }));
-            if let Some(arr) = v.get("data").and_then(|d| d.as_array()) {
-                for m in arr {
-                    if let Some(id) = m.get("id").and_then(|i| i.as_str()) {
-                        data.push(json!({
-                            "id": format!("{}/{}", p.id, id),
-                            "object": "model",
-                            "owned_by": p.id,
-                        }));
+        if let Some(arr) = maybe_arr {
+            for m in arr {
+                if let Some(id) = m.get("id").and_then(|i| i.as_str()) {
+                    let clean_id = id.strip_prefix(&format!("{}/", p.id)).unwrap_or(id);
+                    let mut model = json!({
+                        "id": format!("{}/{}", p.id, clean_id),
+                        "object": "model",
+                        "owned_by": p.id,
+                    });
+                    // Preserve optional, provider-neutral model metadata so
+                    // the UI can distinguish catalog entries from models
+                    // that are loaded and can gate features by capabilities.
+                    for field in [
+                        "name",
+                        "state",
+                        "loaded",
+                        "context_length",
+                        "max_model_len",
+                        "capabilities",
+                        "input_modalities",
+                    ] {
+                        if let Some(value) = m.get(field) {
+                            model[field] = value.clone();
+                        }
                     }
+                    data.push(model);
                 }
             }
         }
@@ -433,13 +528,37 @@ fn session_id() -> &'static str {
     })
 }
 
-/// Route a chat completion to the provider implied by the `<provider>/<model>`
-/// prefix, inject the key, and stream the upstream response straight through.
-async fn chat_completions(State(st): State<AppState>, Json(body): Json<Value>) -> Response {
-    chat_completions_for(&st, &providers_now(), body).await
+fn cloud_allowed_header(headers: &HeaderMap) -> bool {
+    match headers
+        .get("x-clive-cloud-allowed")
+        .and_then(|v| v.to_str().ok())
+    {
+        Some(v) => !matches!(v.trim().to_ascii_lowercase().as_str(), "false" | "0" | "no"),
+        None => true,
+    }
 }
 
-async fn chat_completions_for(st: &AppState, providers: &[Provider], mut body: Value) -> Response {
+/// Route a chat completion to the provider implied by the `<provider>/<model>`
+/// prefix, inject the key, and stream the upstream response straight through.
+async fn chat_completions(
+    headers: HeaderMap,
+    State(st): State<AppState>,
+    Json(body): Json<Value>,
+) -> Response {
+    chat_completions_with_policy(&st, &providers_now(), body, cloud_allowed_header(&headers)).await
+}
+
+#[cfg(test)]
+async fn chat_completions_for(st: &AppState, providers: &[Provider], body: Value) -> Response {
+    chat_completions_with_policy(st, providers, body, true).await
+}
+
+async fn chat_completions_with_policy(
+    st: &AppState,
+    providers: &[Provider],
+    mut body: Value,
+    cloud_allowed: bool,
+) -> Response {
     let started = Instant::now();
     let request_id = format!(
         "clive-{}",
@@ -464,6 +583,19 @@ async fn chat_completions_for(st: &AppState, providers: &[Provider], mut body: V
         )
             .into_response();
     };
+    if provider.cloud && !cloud_allowed {
+        return (
+            StatusCode::FORBIDDEN,
+            [(
+                header::HeaderName::from_static("x-clive-request-id"),
+                request_id,
+            )],
+            Json(json!({
+                "error": format!("cloud provider '{}' is blocked because cloud AI is disabled", provider.id)
+            })),
+        )
+            .into_response();
+    }
 
     if let Some(obj) = body.as_object_mut() {
         obj.insert("model".to_string(), json!(model));
@@ -780,7 +912,13 @@ mod tests {
         assert!(!derive_cloud("http://localhost:11434/v1"));
         assert!(!derive_cloud("http://127.0.0.1:1234/v1"));
         assert!(!derive_cloud("https://[::1]:8000/v1"));
+        assert!(!derive_cloud("http://parmenide:8000/v1"));
+        assert!(!derive_cloud("http://parmenide.local:8000/v1"));
+        assert!(!derive_cloud("http://192.168.1.42:11434/v1"));
+        assert!(!derive_cloud("http://10.0.0.5:8080/v1"));
+        assert!(!derive_cloud("http://172.16.4.2:8080/v1"));
         assert!(derive_cloud("https://openrouter.ai/api/v1"));
+        assert!(derive_cloud("https://8.8.8.8/v1"));
     }
 
     #[test]
@@ -797,9 +935,16 @@ mod tests {
     fn base_url_validation() {
         assert!(valid_base_url("https://openrouter.ai/api/v1"));
         assert!(valid_base_url("http://localhost:11434/v1"));
+        assert!(valid_base_url("http://parmenide:8000/v1"));
+        assert!(valid_base_url("http://192.168.1.42:11434/v1"));
+        assert!(valid_base_url("https://[::1]:8000/v1"));
         assert!(!valid_base_url("ftp://x"));
         assert!(!valid_base_url("https://"));
         assert!(!valid_base_url("https://a b"));
+        assert!(!valid_base_url("http://host:0/v1"));
+        assert!(!valid_base_url("http://user@host.test/v1"));
+        assert!(!valid_base_url("http://-bad.test/v1"));
+        assert!(!valid_base_url("http://[not-ipv6]:8000/v1"));
     }
 
     #[test]
@@ -1201,5 +1346,77 @@ mod tests {
         .0;
         assert_eq!(response["ok"], false);
         assert_eq!(response["selected"], Value::Null);
+    }
+
+    #[tokio::test]
+    async fn models_preserves_metadata_and_ignores_http_error_responses() {
+        let ok_app = Router::new().route(
+            "/models",
+            get(|| async {
+                Json(json!({
+                    "data": [{
+                        "id": "qwen-vl",
+                        "name": "Qwen VL",
+                        "loaded": true,
+                        "state": "ready",
+                        "max_model_len": 32768,
+                        "input_modalities": ["text", "image"]
+                    }]
+                }))
+            }),
+        );
+        let err_app = Router::new().route(
+            "/models",
+            get(|| async {
+                (
+                    StatusCode::UNAUTHORIZED,
+                    Json(json!({ "data": [{"id": "should-not-appear"}] })),
+                )
+            }),
+        );
+        let ok_url = start_mock(ok_app).await;
+        let err_url = start_mock(err_app).await;
+        let providers = [
+            provider("lan", ok_url, false, None),
+            provider("denied", err_url, false, None),
+        ];
+
+        let response = models_for(&test_state(), &providers).await;
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let result: Value = serde_json::from_slice(&body).unwrap();
+        let arr = result["data"].as_array().unwrap();
+        assert_eq!(arr.len(), 1);
+        assert_eq!(arr[0]["id"], "lan/qwen-vl");
+        assert_eq!(arr[0]["name"], "Qwen VL");
+        assert_eq!(arr[0]["max_model_len"], 32768);
+        assert_eq!(arr[0]["input_modalities"], json!(["text", "image"]));
+    }
+
+    #[tokio::test]
+    async fn chat_blocks_cloud_provider_when_cloud_opt_in_is_disabled() {
+        let mut headers = HeaderMap::new();
+        assert!(cloud_allowed_header(&headers));
+        headers.insert("x-clive-cloud-allowed", "false".parse().unwrap());
+        assert!(!cloud_allowed_header(&headers));
+        headers.insert("x-clive-cloud-allowed", "true".parse().unwrap());
+        assert!(cloud_allowed_header(&headers));
+
+        let cloud_provider = Provider {
+            id: "cloud-test".into(),
+            base_url: "https://provider.example/v1".into(),
+            api_key: Some("sk-test".into()),
+            cloud: true,
+            builtin: false,
+        };
+        let blocked = chat_completions_with_policy(
+            &test_state(),
+            &[cloud_provider],
+            json!({ "model": "cloud-test/gpt-4o", "messages": [] }),
+            false,
+        )
+        .await;
+        assert_eq!(blocked.status(), StatusCode::FORBIDDEN);
     }
 }

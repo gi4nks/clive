@@ -154,6 +154,56 @@ describe('buildChatPrompt', () => {
     expect(prompt).toContain('next')
     expect(truncated).toBe(false)
   })
+
+  it('budgets optional context and output tokens for a small model context', () => {
+    const listing = Array.from({ length: 300 }, (_, i) => `desktop-document-${i}.pdf`).join('\n')
+    const { system, prompt, truncated, maxOutputTokens } = buildChatPrompt(
+      { currentDir: '/Users/example/Desktop', dirListing: listing, fileContext: 'x'.repeat(4000) },
+      [{ role: 'user', content: 'older context '.repeat(100) }],
+      'How can I organize everything on my desktop?',
+      1024,
+    )
+    expect(maxOutputTokens).toBe(512)
+    expect(prompt).toContain('How can I organize everything on my desktop?')
+    expect(prompt).toContain('desktop-document-0.pdf')
+    expect(prompt).not.toContain('older context')
+    expect(system).toContain('Do not ask the user to list files that are already shown')
+    expect(prompt.length).toBeLessThan(listing.length)
+    expect(Math.ceil(system.length / 3) + Math.ceil(prompt.length / 2) + maxOutputTokens!).toBeLessThanOrEqual(1024)
+    expect(truncated).toBe(true)
+  })
+
+  it('truncates directory listings on complete filename lines', () => {
+    const listing = Array.from({ length: 100 }, (_, i) => `very-long-filename-${i}-${'x'.repeat(40)}.txt`).join('\n')
+    const { prompt } = buildChatPrompt({ currentDir: '/d', dirListing: listing, fileContext: '' }, [], 'organize these', 1024)
+    expect(prompt).not.toMatch(/very-long-filename-\d+-x+$/m)
+    expect(prompt).toContain('omitted')
+  })
+
+  it('builds structured multi-turn messages with image parts and avoids artificial maxOutputTokens on normal contexts', () => {
+    const built = buildChatPrompt(
+      {
+        currentDir: '/d',
+        dirListing: 'photo.png',
+        fileContext: '### photo.png (vision attachment)\n[image attached · 42 byte]',
+        images: [{ name: 'photo.png', base64: 'aW1n', mimeType: 'image/png' }],
+      },
+      [
+        { role: 'user', content: 'first question' },
+        { role: 'assistant', content: 'first answer' },
+      ],
+      'describe this image',
+      32_768,
+    )
+    expect(built.maxOutputTokens).toBeUndefined()
+    expect(built.truncated).toBe(false)
+    expect(built.messages).toHaveLength(3)
+    expect(built.messages[0]).toEqual({ role: 'user', content: 'first question' })
+    expect(built.messages[1]).toEqual({ role: 'assistant', content: 'first answer' })
+    expect(Array.isArray(built.messages[2].content)).toBe(true)
+    const parts = built.messages[2].content as Array<{ type: string }>
+    expect(parts.map((p) => p.type)).toEqual(['text', 'image'])
+  })
 })
 
 describe('renderDirListing', () => {

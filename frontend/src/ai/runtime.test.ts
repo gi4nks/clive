@@ -1,10 +1,10 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { createAIModel, listModels } from '@gi4nks/wise'
+import { createAIModel } from '@gi4nks/wise'
 import { generateObject, streamText } from 'ai'
 import { gatewayBase } from '../api'
 
-vi.mock('@gi4nks/wise', () => ({ createAIModel: vi.fn(), listModels: vi.fn() }))
+vi.mock('@gi4nks/wise', () => ({ createAIModel: vi.fn() }))
 vi.mock('ai', () => ({ generateObject: vi.fn(), streamText: vi.fn() }))
 vi.mock('../api', () => ({ gatewayBase: vi.fn() }))
 
@@ -32,15 +32,20 @@ describe('AI runtime gateway adapter', () => {
       { signal: undefined },
     )
 
-    vi.mocked(listModels).mockResolvedValue([
-      { id: 'local/one', name: 'One' },
-      { id: 'standalone', name: 'Standalone' },
-    ] as never)
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ data: [
+        { id: 'local/one', name: 'One', owned_by: 'local', loaded: true, state: 'ready', context_length: 8192, capabilities: ['chat'] },
+        { id: 'lan/two', name: 'Two', owned_by: 'lan', max_model_len: 32768, input_modalities: ['text', 'image'] },
+        { id: 'standalone', name: 'Standalone' },
+      ] }),
+    }))
     expect(await runtime.listAvailableModels()).toEqual([
-      { id: 'one', name: 'One', provider: 'local' },
+      { id: 'one', name: 'One', provider: 'local', loaded: true, state: 'ready', contextLength: 8192, capabilities: ['chat'] },
+      { id: 'two', name: 'Two', provider: 'lan', contextLength: 32768, inputModalities: ['text', 'image'] },
       { id: 'standalone', name: 'Standalone', provider: '' },
     ])
-    expect(listModels).toHaveBeenCalledWith('opencode', { opencode: { apiKey: 'local-gateway', baseUrl: 'http://127.0.0.1:4321/v1' } }, { signal: undefined })
+    expect(fetch).toHaveBeenCalledWith('http://127.0.0.1:4321/v1/models', { signal: undefined })
     await runtime.getModel('local/one')
     expect(createAIModel).toHaveBeenCalledWith('opencode', 'local/one', { opencode: { apiKey: 'local-gateway', baseUrl: 'http://127.0.0.1:4321/v1' } })
     vi.unstubAllGlobals()
@@ -83,6 +88,19 @@ describe('AI runtime gateway adapter', () => {
     expect(chunks).toEqual(['hello', ' world'])
     expect(onFinish).toHaveBeenCalledWith({ finishReason: 'stop', textChars: 11 })
     expect(onResponse).toHaveBeenCalledWith({ status: 206, headers: { 'x-clive-upstream-status': '206', 'x-provider': 'local' } })
+
+    vi.mocked(streamText).mockResolvedValueOnce({
+      textStream: (async function* () { yield 'structured' })(),
+      finishReason: Promise.resolve('stop'),
+      response: Promise.resolve({ headers: {} }),
+    } as never)
+    const msgChunks: string[] = []
+    for await (const chunk of runtime.streamChat({ model: 'local/one', messages: [{ role: 'user', content: 'hi' }] })) msgChunks.push(chunk)
+    expect(msgChunks).toEqual(['structured'])
+    expect(streamText).toHaveBeenLastCalledWith(expect.objectContaining({
+      messages: [{ role: 'user', content: 'hi' }],
+      headers: { 'x-clive-cloud-allowed': 'true' },
+    }))
   })
 
   it('propagates provider errors and normalizes cancellation from structured calls', async () => {

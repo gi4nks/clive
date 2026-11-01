@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { modelCapabilities, isImageName, visionGate } from './capabilities'
+import { modelCapabilities, isImageName, imageMimeType, visionGate } from './capabilities'
 
 describe('modelCapabilities', () => {
   it('flags vision models and a large context', () => {
@@ -20,13 +20,23 @@ describe('modelCapabilities', () => {
     expect(c.supportsVision).toBe(false)
     expect(c.maxContextTokens).toBe(8_192)
   })
+  it('merges provider-discovered contextLength and vision modalities', () => {
+    const c = modelCapabilities('parmenide/custom-model', {
+      contextLength: 40_960,
+      inputModalities: ['text', 'image'],
+    })
+    expect(c.supportsVision).toBe(true)
+    expect(c.maxContextTokens).toBe(40_960)
+  })
 })
 
 describe('isImageName', () => {
-  it('matches by extension arg or name', () => {
+  it('matches by extension arg or name and resolves MIME types', () => {
     expect(isImageName('a', 'png')).toBe(true)
     expect(isImageName('b.JPG')).toBe(true)
     expect(isImageName('c.txt', 'txt')).toBe(false)
+    expect(imageMimeType('photo.jpg')).toBe('image/jpeg')
+    expect(imageMimeType('doc.txt')).toBeNull()
   })
 })
 

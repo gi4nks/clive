@@ -5,26 +5,33 @@
  * the model proposes executes until the user confirms a specific action card.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { FileEntry } from '../api.js'
+import { undoPlan, type FileEntry } from '../api.js'
 import { budgetFiles, renderBudgeted, renderDirListing } from './budget.js'
 import { buildChatPrompt, extractActions, validateChatAction, CANCELLED_SENTINEL, type ChatMessage } from './chat.js'
 import i18n from '../i18n'
-import { isImageName, modelCapabilities, visionGate } from './capabilities.js'
+import { isImageName, modelCapabilities, visionGate, type DiscoveredModelMeta } from './capabilities.js'
 import { collectFileContents } from './fs.js'
 import { streamChat, type AiFinishMeta, type StreamArgs } from './runtime.js'
 import { addDebugEvent, addDebugLog, updateDebugLog } from './usePlanDebug.js'
 import { proposalFromChatActions } from './proposal.js'
 import { useAiProposal } from './useAiProposal.js'
 import { snapshotContext, type AiContextSnapshot } from './context.js'
+import { describeAiError } from './execution.js'
 import type { LocationDescriptor } from '../location.js'
 import { getAppConfig } from '../settings/appConfig.js'
 
 export interface UseChatDeps {
   enabled?: boolean
+  cloudAllowed?: boolean
   currentPath: string
   entries: FileEntry[]
   selected: FileEntry[]
   model: string
+  modelMeta?: DiscoveredModelMeta
+  contextLength?: number
+  contextIsProvisional?: boolean
+  refreshModelContext?: () => Promise<unknown>
+  onBatchApplied?: (batchId: string, rootPath: string) => void
   guardOn: boolean
   location?: LocationDescriptor
   setStatus: (msg: string, kind: 'success' | 'error' | 'info') => void
@@ -37,6 +44,8 @@ export interface ChatMessageState extends ChatMessage {
   context?: AiContextSnapshot
   streaming?: boolean
   actionsApplied?: boolean[]
+  actionBatchIds?: (string | null)[]
+  actionsUndone?: boolean[]
   actionErrors?: (string | null)[]
 }
 
@@ -81,6 +90,12 @@ export function useChat(deps: UseChatDeps) {
     async (text: string, extraFiles: FileEntry[] = []) => {
       if (depsRef.current.enabled === false || !getAppConfig().ai.enabled) return
       if (!text.trim() || streamingRef.current) return
+      if (depsRef.current.cloudAllowed === false) {
+        const blockedMsg = i18n.t('ai.cloudDisabled')
+        setError(blockedMsg)
+        depsRef.current.setStatus(blockedMsg, 'error')
+        return
+      }
       streamingRef.current = true
       setError('')
       const userMsg: ChatMessageState = { role: 'user', content: text }
@@ -114,17 +129,63 @@ export function useChat(deps: UseChatDeps) {
         const attached = [...d.selected, ...addedFiles, ...extraFiles]
         // Vision gate (spec §5.2): images are dropped from context when the
         // model cannot ingest them, with the same note UX as Summarize.
-        const caps = modelCapabilities(d.model)
+        const caps = modelCapabilities(d.model, d.modelMeta)
         const gate = visionGate(attached, caps)
         if (gate.note) d.setStatus(gate.note, 'info')
         const usable = caps.supportsVision ? attached : attached.filter((f) => !isImageName(f.name, f.extension))
-        const ctx = usable.length ? renderBudgeted(budgetFiles(await collectFileContents(usable))) : ''
+        const includeImages = caps.supportsVision && usable.some((f) => isImageName(f.name, f.extension))
+        const collected = usable.length
+          ? includeImages
+            ? await collectFileContents(usable, { includeImages: true })
+            : await collectFileContents(usable)
+          : []
+        const ctx = collected.length ? renderBudgeted(budgetFiles(collected)) : ''
+        const images = collected
+          .filter((f): f is typeof f & { imageBase64: string } => !!f.imageBase64)
+          .map((f) => ({ name: f.name, base64: f.imageBase64, mimeType: f.imageMimeType ?? 'image/png' }))
         const dirListing = renderDirListing(d.entries)
-        const { system, prompt, truncated } = buildChatPrompt({ currentDir: d.currentPath, dirListing, fileContext: ctx }, messages, text)
+        const { system, prompt, messages: modelMessages, truncated, maxOutputTokens } = buildChatPrompt(
+          { currentDir: d.currentPath, dirListing, fileContext: ctx, ...(images.length ? { images } : {}) },
+          messages,
+          text,
+          d.contextLength,
+        )
+        addDebugEvent(debugId, {
+          stage: 'stream',
+          type: 'response',
+          metadata: {
+            contextLength: d.contextLength ?? null,
+            maxOutputTokens: maxOutputTokens ?? null,
+            promptChars: system.length + prompt.length,
+            directoryEntries: d.entries.length,
+            imagesAttached: images.length,
+            contextTrimmed: truncated,
+          },
+        })
         const stream = d.streamChat ?? streamChat
         let raw = ''
         let finish: AiFinishMeta | undefined
-        for await (const chunk of stream({ model: d.model, system, prompt, signal: ctrl.signal, onFinish: (meta) => { finish = meta } })) {
+        for await (const chunk of stream({
+          model: d.model,
+          system,
+          prompt,
+          messages: modelMessages,
+          signal: ctrl.signal,
+          maxOutputTokens,
+          onFinish: (meta) => { finish = meta },
+          onResponse: (meta) => {
+            if (meta.headers?.['x-clive-request-id'] || meta.status !== undefined) {
+              addDebugEvent(debugId, {
+                stage: 'stream',
+                type: 'response',
+                metadata: {
+                  status: meta.status ?? null,
+                  requestId: meta.headers?.['x-clive-request-id'] ?? null,
+                },
+              })
+            }
+          },
+        })) {
           raw += chunk
           setMessages((prev) => {
             const next = [...prev]
@@ -134,6 +195,7 @@ export function useChat(deps: UseChatDeps) {
             return next
           })
         }
+        if (!raw.trim()) throw new Error(i18n.t('chat.emptyResponse'))
         const { text: clean, actions } = extractActions(raw)
         updateDebugLog(debugId, { status: 'success', stage: 'stream' })
         addDebugEvent(debugId, { stage: 'stream', type: 'success', metadata: { textChars: raw.length, finishReason: finish?.finishReason ?? null } })
@@ -147,6 +209,8 @@ export function useChat(deps: UseChatDeps) {
           patched.streaming = false
           if (actions.length) {
             patched.actionsApplied = actions.map(() => false)
+            patched.actionBatchIds = actions.map(() => null)
+            patched.actionsUndone = actions.map(() => false)
             patched.actionErrors = actions.map(() => null)
           }
           next[next.length - 1] = patched
@@ -155,9 +219,13 @@ export function useChat(deps: UseChatDeps) {
         if (finish?.finishReason === 'length') setError(i18n.t('chat.responseTruncated'))
         if (truncated) setHistoryTruncated(true)
       } catch (e) {
-        updateDebugLog(debugId, { status: 'error', errorDetails: String(e) })
-        addDebugEvent(debugId, { stage: 'stream', type: 'error', detail: String(e) })
-        if (!ctrl.signal.aborted) setError(String(e))
+        const rawError = String(e)
+        const visibleError = rawError.includes('AI_NoOutputGeneratedError')
+          ? i18n.t('chat.noOutput')
+          : describeAiError(e)
+        updateDebugLog(debugId, { status: 'error', errorDetails: rawError })
+        addDebugEvent(debugId, { stage: 'stream', type: 'error', detail: rawError })
+        if (!ctrl.signal.aborted) setError(visibleError)
         setMessages((prev) => {
           const next = [...prev]
           if (next[next.length - 1]?.streaming) {
@@ -166,6 +234,9 @@ export function useChat(deps: UseChatDeps) {
           return next
         })
       } finally {
+        if (depsRef.current.contextIsProvisional) {
+          void depsRef.current.refreshModelContext?.().catch(() => undefined)
+        }
         streamingRef.current = false
         setStreaming(false)
         setBusy(false)
@@ -229,14 +300,21 @@ export function useChat(deps: UseChatDeps) {
           return
         }
         patch((m) => {
-          const applied = [...(m.actionsApplied ?? [])]
-          applied[actIdx] = true
-          return { ...m, actionsApplied: applied }
+          const nextApplied = [...(m.actionsApplied ?? [])]
+          nextApplied[actIdx] = true
+          const nextBatches = [...(m.actionBatchIds ?? [])]
+          nextBatches[actIdx] = applied.batchId || null
+          const nextUndone = [...(m.actionsUndone ?? [])]
+          nextUndone[actIdx] = false
+          return { ...m, actionsApplied: nextApplied, actionBatchIds: nextBatches, actionsUndone: nextUndone }
         })
+        if (applied.applied > 0 && applied.batchId) {
+          d.onBatchApplied?.(applied.batchId, d.currentPath)
+        }
         d.setStatus(i18n.t('chat.appliedShort'), 'success')
         d.refresh()
       } catch (e) {
-        const msg2 = String(e)
+        const msg2 = describeAiError(e)
         setErrorAt(msg2)
         d.setStatus(msg2, 'error')
       } finally {
@@ -244,6 +322,52 @@ export function useChat(deps: UseChatDeps) {
       }
     },
     [messages, applyProposal],
+  )
+
+  const undoAction = useCallback(
+    async (msgIdx: number, actIdx: number) => {
+      if (depsRef.current.enabled === false || !getAppConfig().ai.enabled) return
+      const key = `undo:${msgIdx}:${actIdx}`
+      if (inFlightActions.current.has(key)) return
+      const batchId = messages[msgIdx]?.actionBatchIds?.[actIdx]
+      if (!batchId) return
+      const d = depsRef.current
+      inFlightActions.current.add(key)
+      try {
+        const res = await undoPlan(batchId)
+        if (res?.failed?.length) {
+          const err = res.failed.map((f) => f.error).join('; ')
+          setMessages((prev) =>
+            prev.map((m, i) => {
+              if (i !== msgIdx) return m
+              const errs = [...(m.actionErrors ?? [])]
+              errs[actIdx] = err
+              return { ...m, actionErrors: errs }
+            }),
+          )
+          d.setStatus(err, 'error')
+          return
+        }
+        setMessages((prev) =>
+          prev.map((m, i) => {
+            if (i !== msgIdx) return m
+            const batches = [...(m.actionBatchIds ?? [])]
+            batches[actIdx] = null
+            const undone = [...(m.actionsUndone ?? [])]
+            undone[actIdx] = true
+            return { ...m, actionBatchIds: batches, actionsUndone: undone }
+          }),
+        )
+        d.setStatus(i18n.t('ai.restored'), 'success')
+        d.refresh()
+      } catch (e) {
+        const err = describeAiError(e)
+        d.setStatus(err, 'error')
+      } finally {
+        inFlightActions.current.delete(key)
+      }
+    },
+    [messages],
   )
 
   const cancelAction = useCallback((msgIdx: number, actIdx: number) => {
@@ -287,6 +411,7 @@ export function useChat(deps: UseChatDeps) {
     send,
     abort: () => abortRef.current?.abort(),
     applyAction,
+    undoAction,
     cancelAction,
     validateAction,
     reset,

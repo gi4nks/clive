@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import type { ChatController, ChatMessageState } from './useChat.js'
 import { CANCELLED_SENTINEL, type ChatAction } from './chat.js'
 import { Markdown } from './Markdown.js'
+import { UiIcon, type UiIconName } from '../UiIcons.js'
 
 /** Errors that mean the model emitted an inline op the app structurally cannot
  *  perform (e.g. nested `create` for a `.keep`). The card is hidden and only
@@ -123,20 +124,21 @@ export function ChatDrawer({ open, embedded = false, showHeader = true, onClose,
             )}
             <button className="tooltip tooltip-left btn btn-ghost btn-xs" onClick={onClose} aria-label={t('common.close')}
               title={t('common.close')}
-        data-tip={t('common.close')}>✕</button>
+        data-tip={t('common.close')}><UiIcon name="close" className="h-3.5 w-3.5" /></button>
           </div>
         </div>}
 
         {ai.historyTruncated && (
-          <div className="mx-3 mt-2 rounded-md border border-warning/40 bg-warning/10 px-2 py-1 text-[11px] text-warning">
-            ⚠ {t('chat.truncated')}
+          <div className="mx-3 mt-2 flex items-center gap-1.5 rounded-md border border-warning/40 bg-warning/10 px-2 py-1 text-[11px] text-warning">
+            <UiIcon name="warning" className="h-3.5 w-3.5" />
+            <span>{t('chat.truncated')}</span>
           </div>
         )}
 
         <div className="scroll-area flex-1 overflow-y-auto p-3 text-sm">
           {ai.error && (
             <div className="mb-2 flex items-start gap-2 rounded-md border border-error/40 bg-error/10 p-2 text-xs text-error">
-              <span aria-hidden>⚠️</span>
+              <UiIcon name="warning" className="mt-0.5 h-3.5 w-3.5" />
               <span className="min-w-0 flex-1 break-words">{ai.error}</span>
               <button
                 className={`btn btn-ghost btn-xs shrink-0 ${copied ? 'text-success' : ''} !min-h-0`}
@@ -151,13 +153,12 @@ export function ChatDrawer({ open, embedded = false, showHeader = true, onClose,
                 }}
               >
                 {copied ? t('chat.copied') : t('ai.copy')}
-                <span className="ml-1 text-xs opacity-80">↻</span>
               </button>
             </div>
           )}
           {ai.messages.length === 0 && (
-            <div className="flex h-full flex-col items-center justify-center gap-2 text-center opacity-60">
-              <span className="text-3xl">💬</span>
+            <div className="flex h-full flex-col items-center justify-center gap-2.5 text-center opacity-55">
+              <UiIcon name="chatBubble" className="h-8 w-8" />
               <span>{t('chat.empty')}</span>
             </div>
           )}
@@ -180,9 +181,12 @@ export function ChatDrawer({ open, embedded = false, showHeader = true, onClose,
                     a={a}
                     validation={v}
                     applied={m.actionsApplied?.[j]}
+                    undone={m.actionsUndone?.[j]}
+                    canUndo={!!m.actionBatchIds?.[j]}
                     error={m.actionErrors?.[j]}
                     requiresPlan={v.ok && !!v.requiresPlan}
                     onApply={() => void ai.applyAction(i, j)}
+                    onUndo={() => void ai.undoAction(i, j)}
                     onReviewPlan={() => void ai.applyAction(i, j)}
                     onCancel={() => ai.cancelAction(i, j)}
                   />
@@ -287,7 +291,7 @@ function MessageBubble({
             aria-label={t('plan.createBtn')}
             onClick={() => onCreatePlan?.(m.content)}
           >
-            🪄
+            <UiIcon name="wand" className="h-3.5 w-3.5" />
           </button>
         ))}
         <button
@@ -314,18 +318,24 @@ function ActionCard({
   a,
   validation,
   applied,
+  undone,
+  canUndo,
   error,
   requiresPlan,
   onApply,
+  onUndo,
   onReviewPlan,
   onCancel,
 }: {
   a: ChatAction
   validation: { ok: true; requiresPlan?: boolean } | { ok: false; error: string }
   applied?: boolean
+  undone?: boolean
+  canUndo?: boolean
   error?: string | null
   requiresPlan?: boolean
   onApply: () => void
+  onUndo?: () => void
   onReviewPlan: () => void
   onCancel: () => void
 }) {
@@ -337,11 +347,22 @@ function ActionCard({
   const blocked = !validation.ok && !isApplied && !isCancelled
   return (
     <div className="mt-1 rounded-lg border border-base-300 bg-base-200/50 p-2 text-xs">
-      <div className="mb-1 font-semibold">
-        {iconFor(a.type)} {label}
+      <div className="mb-1 flex items-center gap-1.5 font-semibold">
+        <UiIcon name={iconFor(a.type)} className="h-3.5 w-3.5 text-primary" />
+        <span>{label}</span>
       </div>
       <div className="mb-1 break-words opacity-80">{summary}</div>
-      {isApplied && <div className="text-success">✓ {t('chat.applied')}</div>}
+      {isApplied && !undone && (
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-success">✓ {t('chat.applied')}</span>
+          {canUndo && onUndo && (
+            <button type="button" className="btn btn-ghost btn-xs !min-h-0" onClick={onUndo}>
+              ↶ {t('chat.undo')}
+            </button>
+          )}
+        </div>
+      )}
+      {isApplied && undone && <div className="opacity-70">↶ {t('chat.undone')}</div>}
       {isCancelled && <div className="opacity-60">— {t('chat.cancelled')}</div>}
       {blocked && <div className="mb-1 text-warning">{validation.error}</div>}
       {!blocked && !isApplied && !isCancelled && error && <div className="mb-1 text-error">{error}</div>}
@@ -365,8 +386,14 @@ function ActionCard({
   )
 }
 
-function iconFor(type: ChatAction['type']): string {
-  return { rename: '🔄', organize: '🗂️', createFolder: '📁', create: '✨', trash: '🗑️' }[type]
+function iconFor(type: ChatAction['type']): UiIconName {
+  return ({
+    rename: 'renameAction',
+    organize: 'organizeAction',
+    createFolder: 'newFolderAction',
+    create: 'sparkles',
+    trash: 'trashAction',
+  } as const)[type]
 }
 
 function describeAction(a: ChatAction): string {

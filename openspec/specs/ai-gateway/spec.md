@@ -40,7 +40,7 @@ The system SHALL accept OpenAI-compatible chat-completion requests, route them t
 - **THEN** the gateway forwards it to the local Ollama endpoint and streams the response back
 
 ### Requirement: Gateway injects keys and is the CORS origin
-The system SHALL inject provider API keys server-side so the webview never sends or stores cloud keys, and SHALL return CORS headers that allow the application's webview origin.
+The system SHALL inject provider API keys server-side so the webview never sends or stores cloud keys, SHALL return CORS headers that allow the application's webview origin and expose `x-clive-*` diagnostic headers, and SHALL accept request bodies up to 12 MB to accommodate base64 vision attachments.
 
 #### Scenario: Keys held by the gateway
 - **WHEN** a completion targets a provider requiring an API key
@@ -48,20 +48,22 @@ The system SHALL inject provider API keys server-side so the webview never sends
 - **AND** the webview request itself carries only a placeholder credential
 
 ### Requirement: Cloud and privacy gate
-The system SHALL default to local providers and SHALL only forward to a cloud provider when the user has explicitly enabled cloud, warning before any request whose contents would leave the machine.
+The system SHALL classify loopback, RFC1918 private IPs, link-local addresses, mDNS domains, and single-label LAN hostnames as local (`cloud = false`), SHALL default to local providers, and SHALL only forward to a cloud provider when the user has explicitly enabled cloud (`x-clive-cloud-allowed: true`), warning before any request whose contents would leave the machine.
 
 #### Scenario: Cloud disabled
 - **WHEN** a model maps to a cloud provider and cloud is disabled
-- **THEN** the gateway refuses the request and signals that cloud is not enabled
+- **THEN** the gateway refuses the request (`403 Forbidden`) and signals that cloud is not enabled
+
+#### Scenario: LAN inference server treated as local
+- **WHEN** a custom provider points at a private LAN IP or single-label hostname (e.g. `http://parmenide:8000/v1`)
+- **THEN** the gateway classifies it as local and permits requests without cloud opt-in
 
 #### Scenario: Cloud enabled warns
 - **WHEN** a request is routed to a cloud provider after the user enabled cloud
 - **THEN** the frontend has shown a warning that file contents will leave the machine
 
 ### Requirement: Health and model endpoints reflect the live registry
-`/healthz` SHALL report every registered provider (built-in and custom) with a
-per-provider availability probe; `/v1/models` SHALL aggregate models from all
-registered providers with `<provider>/` prefixes.
+`/healthz` SHALL probe every registered provider (built-in and custom) concurrently with bounded per-provider timeouts; `/v1/models` SHALL concurrently aggregate models from reachable providers with `<provider>/` prefixes while preserving optional context and modality metadata and ignoring non-2xx responses.
 
 #### Scenario: Custom provider in health
 - **WHEN** a custom provider with a reachable base URL is configured

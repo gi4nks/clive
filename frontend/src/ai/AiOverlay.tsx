@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { AiController } from './useAi'
 import { basename } from './safety'
+import { UiIcon } from '../UiIcons'
 
 /**
  * Global AI preview/apply surface. Because it is owned by App (not the popover),
@@ -34,7 +35,7 @@ export function AiOverlay({ ai, embedded = false, showHeader = true }: { ai: AiC
 
       {error && (
         <div className="flex items-start gap-2 rounded-md border border-error/40 bg-error/10 p-2 text-xs text-error">
-          <span aria-hidden>⚠️</span>
+          <UiIcon name="warning" className="mt-0.5 h-3.5 w-3.5" />
           <span className="min-w-0 flex-1 break-words">{error}</span>
           <button data-bar-control className={`btn btn-ghost btn-xs shrink-0 ${copied ? 'text-success' : ''} !min-h-0`} onClick={async () => {
             try {

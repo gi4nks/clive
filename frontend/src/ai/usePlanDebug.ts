@@ -37,8 +37,8 @@ export interface PlanDebugApply {
 
 export interface PlanDebugLog {
   id: string
-  /** Origin of the run; the activity center uses this to group chat and plan work. */
-  kind?: 'chat' | 'plan'
+  /** Origin of the run; the activity center uses this to group chat, plan, and quick-action work. */
+  kind?: 'chat' | 'plan' | 'action'
   timestamp: number
   model: string
   status: PlanDebugStatus

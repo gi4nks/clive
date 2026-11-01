@@ -9,6 +9,7 @@ import { getAppConfig } from '../settings/appConfig.js'
 
 interface PlanGenerationArgs {
   enabled?: boolean
+  cloudAllowed?: boolean
   entries: FileEntry[]
   currentPath: string
   guardOn: boolean
@@ -44,6 +45,10 @@ export function usePlanGeneration(args: PlanGenerationArgs) {
   const start = useCallback(async (text: string) => {
     if (args.enabled === false || !getAppConfig().ai.enabled) return
     if (busy || args.entries.length > PLAN_MAX_ENTRIES) return
+    if (args.cloudAllowed === false) {
+      setNotice({ kind: 'error', message: i18n.t('ai.cloudDisabled') })
+      return
+    }
     const controller = new AbortController()
     abortRef.current = controller
     setBusy(true)

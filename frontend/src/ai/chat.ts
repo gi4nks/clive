@@ -4,6 +4,7 @@
  * unit-testable without mocking.
  */
 
+import type { ModelMessage } from 'ai'
 import { validateNewName } from './safety.js'
 import { isProtectedPath } from '../systemGuard.js'
 import { validateFolderPath } from './plan.js'
@@ -153,25 +154,16 @@ export interface ChatMessage {
 export const MAX_HISTORY_CHARS = 12_000
 
 export const CHAT_SYSTEM_PROMPT = [
-  'You are the AI assistant of Clive, a file manager.',
-  'Answer in the language the user writes in.',
-  'If the user asks you to perform a file operation (rename, move, create, trash),',
-  'propose it at the END of your reply using ONLY this exact format:',
-  '',
+  'You are Clive, a file manager assistant. Reply in the user\'s language.',
+  'Use the current directory, directory listing, and attached file context supplied below. Do not ask the user to list files that are already shown. If the listing is shortened or missing, say what you could not inspect.',
+  'Never change files without explicit user confirmation.',
+  'For a single requested file operation, put this exact block at the end:',
   ACTIONS_OPEN,
   '{"actions":[{"type":"rename","file":"/abs/path","newName":"b.txt"}]}',
   ACTIONS_CLOSE,
-  '',
-  'Allowed types: rename (file,newName), organize (file,dstFolder), createFolder (folder), create (file,content), trash (file).',
-  'Rules for actions:',
-  '- create: a SINGLE new text file whose parent folder is EXACTLY the current directory (no subpaths, no placeholders).',
-  '- createFolder: create a new empty folder; `folder` may be a nested RELATIVE path like "01_Personal/CV".',
-  '- organize: moves one file into a single one-level subfolder (dstFolder has no "/").',
-  '- Never create empty ".keep" files to fake folder creation — use createFolder instead.',
-  'For reorganizations that build a folder tree or move MANY files, do NOT emit inline actions:',
-  'explain the plan in words and tell the user to press the magic button (🪄 "Crea piano") to turn it into an executable, undoable plan.',
-  'Nessuna azione viene eseguita senza conferma esplicita dell\'utente.',
-  'If the user does not ask for an operation, do not emit the block.',
+  'Action types: rename(file,newName), organize(file,dstFolder), createFolder(folder), create(file,content), trash(file). create is one new text file in the current directory; createFolder accepts a relative nested path; organize moves one file to one direct subfolder.',
+  'For a reorganization involving multiple files or folders, give a concrete plan based on the supplied filenames and tell the user to press 🪄 Create plan. Do not emit bulk actions in the block.',
+  'Do not emit an action block unless the user requested an operation.',
 ].join('\n')
 
 export function trimHistory(history: ChatMessage[], maxChars: number = MAX_HISTORY_CHARS): { kept: ChatMessage[]; truncated: boolean } {
@@ -181,7 +173,14 @@ export function trimHistory(history: ChatMessage[], maxChars: number = MAX_HISTO
   const first = history[0]
   const rest = history.slice(1)
   const keptRest: ChatMessage[] = []
-  let budget = maxChars - (first ? first.content.length + 20 : 0)
+  let budget = maxChars - (first ? 20 : 0)
+  if (first && first.content.length > budget) {
+    return {
+      kept: budget > 0 ? [{ ...first, content: first.content.slice(0, budget) }] : [],
+      truncated: true,
+    }
+  }
+  if (first) budget -= first.content.length
   // Walk from the END and accumulate; then reverse.
   for (let i = rest.length - 1; i >= 0; i--) {
     const m = rest[i]
@@ -193,18 +192,118 @@ export function trimHistory(history: ChatMessage[], maxChars: number = MAX_HISTO
   return { kept, truncated: kept.length < history.length }
 }
 
+export interface ChatImageAttachment {
+  name: string
+  base64: string
+  mimeType: string
+}
+
 export interface ChatPromptCtx {
   currentDir: string
   dirListing: string
   fileContext: string
+  images?: ChatImageAttachment[]
 }
 
-export function buildChatPrompt(ctx: ChatPromptCtx, history: ChatMessage[], userMsg: string): { system: string; prompt: string; truncated: boolean } {
-  const { kept, truncated } = trimHistory(history)
-  const parts: string[] = [
+function truncateListing(listing: string, maxChars: number): string {
+  if (listing.length <= maxChars) return listing
+  if (maxChars < 32) return ''
+  const lines = listing.split('\n')
+  const kept: string[] = []
+  let used = 0
+  for (const line of lines) {
+    const cost = line.length + (kept.length ? 1 : 0)
+    if (used + cost + 24 > maxChars) break
+    kept.push(line)
+    used += cost
+  }
+  const omitted = Math.max(1, lines.length - kept.length)
+  return `${kept.join('\n')}\n… (+${omitted} omitted)`
+}
+
+export function buildChatPrompt(
+  ctx: ChatPromptCtx,
+  history: ChatMessage[],
+  userMsg: string,
+  contextLength?: number,
+): {
+  system: string
+  prompt: string
+  messages: ModelMessage[]
+  truncated: boolean
+  maxOutputTokens?: number
+} {
+  // Keep input and output inside the selected model's actual context window.
+  // Small context models (<= 4096) get an explicit output cap so input + output
+  // never exceed max_model_len; larger models reserve headroom for budgeting
+  // without artificially starving reasoning/output tokens.
+  const tightCap = !!contextLength && contextLength > 0 && contextLength <= 4096
+  const outputReserve = contextLength && contextLength > 0
+    ? tightCap
+      ? Math.min(1024, Math.max(128, Math.floor(contextLength * 0.5)))
+      : Math.min(4096, Math.floor(contextLength * 0.25))
+    : 0
+  const promptCharBudget = contextLength && contextLength > 0
+    ? Math.max(0, contextLength - outputReserve - Math.ceil(CHAT_SYSTEM_PROMPT.length / 3)) * 2
+    : Number.POSITIVE_INFINITY
+  const fixedChars = ctx.currentDir.length + userMsg.length + 100
+  const optionalBudget = Math.max(0, promptCharBudget - fixedChars)
+  const smallContext = !!contextLength && contextLength <= 2048
+  let listingBudget: number
+  let fileBudget: number
+  let historyBudget: number
+  if (smallContext) {
+    const listingShare = ctx.fileContext ? 0.65 : 1
+    listingBudget = Math.min(ctx.dirListing.length, Math.floor(optionalBudget * listingShare))
+    fileBudget = Math.min(ctx.fileContext.length, Math.max(0, optionalBudget - listingBudget))
+    historyBudget = 0
+  } else {
+    const historyReserve = history.length > 0 ? Math.min(MAX_HISTORY_CHARS, Math.floor(optionalBudget * 0.25)) : 0
+    const fileReserve = ctx.fileContext ? Math.min(ctx.fileContext.length, Math.floor(optionalBudget * 0.45)) : 0
+    listingBudget = Math.min(ctx.dirListing.length, Math.max(0, optionalBudget - fileReserve - historyReserve))
+    fileBudget = Math.min(ctx.fileContext.length, Math.max(0, optionalBudget - listingBudget - historyReserve))
+    historyBudget = Math.min(MAX_HISTORY_CHARS, Math.max(0, optionalBudget - listingBudget - fileBudget))
+  }
+  const listingTruncated = listingBudget < ctx.dirListing.length
+  const fileTruncated = fileBudget < ctx.fileContext.length
+  const budgetedListing = listingTruncated
+    ? truncateListing(ctx.dirListing, listingBudget)
+    : ctx.dirListing
+  const budgetedFiles = fileTruncated && fileBudget > 24
+    ? `${ctx.fileContext.slice(0, fileBudget - 24)}\n…`
+    : fileTruncated ? '' : ctx.fileContext
+  const { kept, truncated: historyWasTrimmed } = historyBudget > 0
+    ? trimHistory(history, historyBudget)
+    : { kept: [], truncated: history.length > 0 }
+  const truncated = historyWasTrimmed || listingTruncated || fileTruncated
+
+  const workspaceParts: string[] = [
     `Current directory: ${ctx.currentDir}`,
-    ctx.dirListing ? `\nDirectory contents:\n${ctx.dirListing}` : '',
-    ctx.fileContext ? `\nSelected/attached file contents:\n${ctx.fileContext}` : '',
+    budgetedListing ? `\nDirectory contents:\n${budgetedListing}` : '',
+    budgetedFiles ? `\nSelected/attached file contents:\n${budgetedFiles}` : '',
+  ]
+  const workspaceText = workspaceParts.filter(Boolean).join('\n')
+  const userTurnText = `${workspaceText}\n\nUser request:\n${userMsg}`
+
+  const messages: ModelMessage[] = [
+    ...kept.map((m): ModelMessage => ({ role: m.role, content: m.content })),
+    ctx.images?.length
+      ? {
+          role: 'user',
+          content: [
+            { type: 'text', text: userTurnText },
+            ...ctx.images.map((img) => ({
+              type: 'image' as const,
+              image: img.base64,
+              mediaType: img.mimeType,
+            })),
+          ],
+        }
+      : { role: 'user', content: userTurnText },
+  ]
+
+  const parts: string[] = [
+    workspaceText,
     '',
     'Conversation so far:',
     ...kept.map((m) => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`),
@@ -212,7 +311,13 @@ export function buildChatPrompt(ctx: ChatPromptCtx, history: ChatMessage[], user
     '',
     'Assistant:',
   ]
-  return { system: CHAT_SYSTEM_PROMPT, prompt: parts.filter(Boolean).join('\n'), truncated }
+  return {
+    system: CHAT_SYSTEM_PROMPT,
+    prompt: parts.filter(Boolean).join('\n'),
+    messages,
+    truncated,
+    ...(tightCap && outputReserve > 0 ? { maxOutputTokens: outputReserve } : {}),
+  }
 }
 
 // ---------------------------------------------------------------------------

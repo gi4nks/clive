@@ -20,8 +20,34 @@ The system SHALL persist the chosen provider/model and any keys to the Tauri sto
 - **WHEN** the user selects a model and later reopens the app
 - **THEN** that model is selected again
 
+### Requirement: Select a model from the selected provider
+The AI settings SHALL show models discovered from the selected provider and
+allow the user to select one as the default model. Selecting a model SHALL
+persist both its provider id and bare model id. The model list SHALL be
+refreshable without restarting Clive.
+
+#### Scenario: Choose a provider model
+- **WHEN** the user selects a provider that returns models
+- **THEN** the settings show those models in a selector
+- **AND** each option shows its reported load state, or an unknown state when
+  the provider does not report one
+- **AND** choosing an option makes it the persisted default provider/model
+
+#### Scenario: Refresh after server model changes
+- **WHEN** the user refreshes the model list
+- **THEN** Clive queries the current gateway catalog without using a stale
+  client-side model-list cache
+
+#### Scenario: Provider returns no models
+- **WHEN** model discovery fails or returns an empty catalog
+- **THEN** the settings show a localized loading, error, or empty state and
+  leave the current selection unchanged
+
 ### Requirement: Attach capability metadata to models
-The system SHALL associate capability flags with each model, including whether it supports vision and a context budget, and SHALL use them to gate features.
+The system SHALL preserve provider-reported capability flags and context length
+when available. Missing metadata SHALL remain unknown and SHALL NOT be
+misrepresented as provider-reported information. Existing conservative
+fallbacks may be used for feature gating where metadata is unavailable.
 
 #### Scenario: Vision-gated action
 - **WHEN** a vision-dependent action is requested while the active model lacks vision support

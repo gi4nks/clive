@@ -5,12 +5,12 @@
  * overlay renders. Kept as a hook so App can call it once and pass the handle
  * both to the status-bar widget (via ctx) and to `actionsFor`.
  */
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { FileEntry } from '../api'
 import i18n from '../i18n'
 import { getAppConfig, useAppConfig } from '../settings/appConfig'
 import { checkHealth, listAvailableModels, type AiHealth, type ModelOption } from './runtime'
-import { fullModelId, isCloudProvider, refreshProviders, useProviderRegistry } from './settings'
+import { fullModelId, getProviders, isCloudProvider, refreshProviders, useProviderRegistry } from './settings'
 import {
   generateContent,
   organizeToApply,
@@ -20,12 +20,19 @@ import {
   type OrganizePlan,
 } from './actions'
 import { collectFileContents } from './fs'
-import { modelCapabilities, visionGate } from './capabilities'
+import { isImageName, modelCapabilities, visionGate } from './capabilities'
 import { validateNewName } from './safety'
 import { createProposal } from './proposal.js'
 import { useAiProposal } from './useAiProposal.js'
 import { snapshotContext } from './context.js'
+import { describeAiError } from './execution.js'
+import { addDebugEvent, addDebugLog, updateDebugLog } from './usePlanDebug.js'
 import type { LocationDescriptor } from '../location.js'
+
+function pickPreferredModel(models: ModelOption[], providerId: string): ModelOption | undefined {
+  const list = models.filter((m) => m.provider === providerId)
+  return list.find((m) => m.state === 'ready' || m.loaded === true) ?? list[0]
+}
 
 export type AiKind = 'rename' | 'summarize' | 'organize' | 'generate' | 'apply'
 export interface RenameRow {
@@ -55,6 +62,15 @@ export function useAi(deps: AiDeps) {
   const [cfg, setCfg] = useAppConfig()
   const sel = { provider: cfg.ai.provider, model: cfg.ai.model }
   const [models, setModels] = useState<ModelOption[]>([])
+  const modelsRef = useRef<ModelOption[]>([])
+  const refreshModels = useCallback(async () => {
+    const available = await listAvailableModels()
+    if (available.length) {
+      modelsRef.current = available
+      setModels(available)
+    }
+    return available
+  }, [])
   const [health, setHealth] = useState<AiHealth | null>(null)
   const providers = useProviderRegistry()
   const [busy, setBusy] = useState<AiKind | null>(null)
@@ -69,6 +85,11 @@ export function useAi(deps: AiDeps) {
   useEffect(() => {
     if (!cfg.ai.enabled) abortRef.current?.abort()
   }, [cfg.ai.enabled])
+  useEffect(() => {
+    if (!cfg.ai.enabled) return
+    if (!getProviders().length) void refreshProviders().catch(() => undefined)
+    void refreshModels().catch(() => undefined)
+  }, [cfg.ai.enabled, refreshModels])
   const proposalContextRef = useRef<ReturnType<typeof snapshotContext> | null>(null)
   const currentContext = () => snapshotContext({
     rootPath: depsRef.current.currentPath,
@@ -85,7 +106,7 @@ export function useAi(deps: AiDeps) {
   const full = fullModelId(sel)
 
   const setProvider = (provider: string) => {
-    const first = models.find((m) => m.provider === provider)
+    const first = pickPreferredModel(models, provider)
     setCfg({ ai: { provider, model: first?.id ?? sel.model } })
   }
   const setModel = (model: string) => {
@@ -103,8 +124,7 @@ export function useAi(deps: AiDeps) {
     setHealth(h)
     if (h.ok) {
       try {
-        const m = await listAvailableModels()
-        if (m.length) setModels(m)
+          await refreshModels()
       } catch {
         /* keep previous */
       }
@@ -120,8 +140,9 @@ export function useAi(deps: AiDeps) {
     setHealth(h)
     if (h.ok) {
       try {
-        const m = await listAvailableModels()
-        if (m.length) setModels(m)
+        if (!modelsRef.current.length) {
+          await refreshModels()
+        }
       } catch {
         /* keep previous */
       }
@@ -130,7 +151,7 @@ export function useAi(deps: AiDeps) {
   }
 
   // Auto-selection: empty/stored-off/cloud-blocked provider falls back to the
-  // first usable one (online preferred, registry order otherwise) + first model.
+  // first usable one (online preferred, registry order otherwise) + first ready model.
   useEffect(() => {
     if (!providers.length) return
     const cloudOk = (id: string) => !isCloudProvider(id) || cfg.ai.cloudOptIn
@@ -138,7 +159,7 @@ export function useAi(deps: AiDeps) {
     const currentUsable = !!current && cloudOk(current.id) && (!health || !!health.providers[current.id])
     if (currentUsable) {
       if (!cfg.ai.model) {
-        const first = models.find((m) => m.provider === current!.id)
+        const first = pickPreferredModel(models, current!.id)
         if (first) setCfg({ ai: { provider: current!.id, model: first.id } })
       }
       return
@@ -146,23 +167,45 @@ export function useAi(deps: AiDeps) {
     const allowed = providers.filter((p) => cloudOk(p.id))
     const next = (health ? allowed.find((p) => health.providers[p.id]) : undefined) ?? allowed[0]
     if (!next) return
-    const first = models.find((m) => m.provider === next.id)
+    const first = pickPreferredModel(models, next.id)
     if (cfg.ai.provider === next.id && cfg.ai.model === (first?.id ?? cfg.ai.model)) return
     setCfg({ ai: { provider: next.id, model: first?.id ?? '' } })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [providers, health, models, cfg.ai.provider, cfg.ai.model, cfg.ai.cloudOptIn])
 
-  const run = async (mode: AiKind, fn: (signal: AbortSignal) => Promise<void>) => {
+  const run = async (mode: AiKind, fn: (signal: AbortSignal, debugId?: string) => Promise<void>) => {
     if (!getAppConfig().ai.enabled) return
     const ctrl = new AbortController()
     abortRef.current = ctrl
     setBusy(mode)
     setError('')
+    const isModelAction = mode !== 'apply'
+    const debugId = isModelAction ? `action-${mode}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}` : undefined
+    if (debugId) {
+      addDebugLog({
+        id: debugId,
+        kind: 'action',
+        model: full,
+        status: 'pending',
+        stage: 'stream',
+        promptText: mode,
+        signature: `${mode}:${depsRef.current.currentPath}`,
+      })
+      addDebugEvent(debugId, { stage: 'stream', type: 'start', detail: mode })
+    }
     try {
-      await fn(ctrl.signal)
+      await fn(ctrl.signal, debugId)
+      if (debugId) {
+        updateDebugLog(debugId, { status: 'success', stage: 'stream' })
+        addDebugEvent(debugId, { stage: 'stream', type: 'success' })
+      }
     } catch (e) {
+      const msg = describeAiError(e)
+      if (debugId) {
+        updateDebugLog(debugId, { status: 'error', errorDetails: msg })
+        addDebugEvent(debugId, { stage: 'stream', type: 'error', detail: msg })
+      }
       if (!ctrl.signal.aborted) {
-        const msg = String(e)
         setError(msg)
         depsRef.current.setStatus(msg, 'error')
       }
@@ -202,7 +245,8 @@ export function useAi(deps: AiDeps) {
       assertUsable()
       const h = await ensureHealth()
       if (!h.ok) throw new Error(i18n.t('ai.providerUnreachable'))
-      const caps = modelCapabilities(sel.model)
+      const selectedModel = modelsRef.current.find((m) => m.provider === sel.provider && m.id === sel.model)
+      const caps = modelCapabilities(full, selectedModel)
       const gate = visionGate(selected, caps)
       if (gate.blocked) {
         depsRef.current.setStatus(gate.note ?? i18n.t('ai.noVision'), 'error')
@@ -212,7 +256,11 @@ export function useAi(deps: AiDeps) {
       setSummary('')
       setRows(null)
       setOrganize(null)
-      const files = await collectFileContents(selected)
+      const usable = caps.supportsVision ? selected : selected.filter((f) => !isImageName(f.name, f.extension))
+      const includeImages = caps.supportsVision && usable.some((f) => isImageName(f.name, f.extension))
+      const files = includeImages
+        ? await collectFileContents(usable, { includeImages: true })
+        : await collectFileContents(usable)
       const text = await summarize(files, { model: full, health: h, signal })
       setSummary(text)
       if (!text.trim()) throw new Error(i18n.t('ai.emptyResult'))
@@ -286,6 +334,7 @@ export function useAi(deps: AiDeps) {
         }
         if (!res.applied) return
         setGen(null)
+        setJournal(res.batchId)
         proposalContextRef.current = null
         d.setStatus(i18n.t('ai.fileCreated'), 'success')
         d.refresh()
@@ -394,6 +443,8 @@ export function useAi(deps: AiDeps) {
     cloudOptIn: cfg.ai.cloudOptIn,
     cloudAllowed,
     refresh,
+    refreshModels,
+    ensureReady: ensureHealth,
     // execution
     busy,
     error,

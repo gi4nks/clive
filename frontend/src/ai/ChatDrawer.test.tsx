@@ -18,7 +18,7 @@ import { ChatDrawer } from './ChatDrawer.js'
 // Minimal fake controller matching ChatController shape.
 const makeAI = (over: Partial<any> = {}) => ({
   messages: [], streaming: false, busy: false, error: '', addedFiles: [], historyTruncated: false,
-  send: vi.fn(), abort: vi.fn(), applyAction: vi.fn(), cancelAction: vi.fn(),
+  send: vi.fn(), abort: vi.fn(), applyAction: vi.fn(), undoAction: vi.fn(), cancelAction: vi.fn(),
   validateAction: vi.fn(() => ({ ok: true })),
   reset: vi.fn(), addFile: vi.fn(), removeAdded: vi.fn(), ...over,
 })
@@ -241,5 +241,21 @@ describe('ChatDrawer', () => {
     fireEvent.click(screen.getByRole('button', { name: 'plan.cancel' }))
     expect(onCancelPlan).toHaveBeenCalledOnce()
     expect(screen.getByText('12s')).toBeInTheDocument()
+  })
+
+  it('renders per-card undo button on applied action cards and triggers undoAction', () => {
+    const ai = makeAI({
+      messages: [{
+        role: 'assistant',
+        content: 'done',
+        actions: [{ type: 'rename', file: '/a', newName: 'b' }],
+        actionsApplied: [true],
+        actionBatchIds: ['batch-42'],
+        actionsUndone: [false],
+      }],
+    })
+    render(<ChatDrawer open onClose={vi.fn()} ai={ai as never} />)
+    fireEvent.click(screen.getByRole('button', { name: /chat\.undo/ }))
+    expect(ai.undoAction).toHaveBeenCalledWith(0, 0)
   })
 })

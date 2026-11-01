@@ -2,6 +2,7 @@ import { useState, useEffect } from "react"
 import { useTranslation } from "react-i18next"
 import { usePlanDebug, type PlanDebugLog } from "./usePlanDebug"
 import { checkHealth, resolveGatewayBase, type AiHealth } from "./runtime"
+import { UiIcon } from "../UiIcons"
 
 export interface AiDebugModalProps {
   open: boolean
@@ -83,7 +84,7 @@ export function AiDebugModal({ open, onClose }: AiDebugModalProps) {
       >
         <div className="flex items-center justify-between border-b border-base-300 pb-3">
           <div className="flex items-center gap-2">
-            <span className="text-xl">🛠️</span>
+            <UiIcon name="wrench" className="h-5 w-5 text-primary" />
             <h3 id="clive-ai-debug-title" className="text-lg font-bold">{t("debug.title", "AI Magic Debugger")}</h3>
           </div>
           <button className="tooltip tooltip-left btn btn-ghost btn-xs" onClick={onClose} aria-label={t("common.close")}

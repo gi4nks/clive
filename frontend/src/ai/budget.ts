@@ -23,6 +23,9 @@ export interface FileContent {
   isDir: boolean
   /** Raw UTF-8 text, or null for binary/dir. */
   text: string | null
+  /** Optional base64 image payload when collected for a vision-capable model. */
+  imageBase64?: string
+  imageMimeType?: string
 }
 
 export interface BudgetedFile {
@@ -94,6 +97,16 @@ export function budgetFiles(files: FileContent[], opts: BudgetOptions = {}): Bud
   let used = 0
 
   for (const f of files) {
+    if (f.imageBase64) {
+      out.push({
+        path: f.path,
+        name: f.name,
+        body: `[image attached · ${f.size} byte]`,
+        truncated: false,
+        note: 'vision attachment',
+      })
+      continue
+    }
     if (f.isDir || f.text === null || !looksLikeText(f.text)) {
       out.push({
         path: f.path,

@@ -53,10 +53,22 @@ drawer.
 - **THEN** a chip for that file appears above the input
 - **AND** clicking the chip's `×` removes it from the next turn's context
 
+### Requirement: Chat prompts fit the selected model's context window
+The system SHALL resolve the selected model's context window from discovered provider metadata (`context_length` / `max_model_len`) with fallback to `modelCapabilities`, and SHALL budget structured multi-turn `messages` and output tokens against that limit without artificially starving models whose discovery response omits `context_length`. It SHALL preserve the current request and active directory, proportionally share remaining budget across the directory listing, attached file context, and prior conversation, and show the existing truncation warning when trimmed. If a provider finishes without text, the chat SHALL show an actionable empty-output message while retaining the raw provider error in diagnostics. For small contexts, directory contents SHALL take priority over prior conversation, and truncation SHALL preserve complete filename lines.
+
+#### Scenario: Small model context with a large directory
+- **WHEN** the selected model reports a 1,024-token context and the directory
+  listing exceeds the available input budget
+- **THEN** Clive limits output tokens and truncates optional context before
+  sending the request
+- **AND** the current user request remains in the prompt
+- **AND** the truncation warning is visible
+
 ### Requirement: Chat history is trimmed FIFO with an anchor
 The system SHALL maintain a per-session character budget on the message
 history. When exceeded, the oldest non-first messages are dropped while the
-first user message is always kept as an anchor, and a warning chip is shown.
+first user message is kept as an anchor (truncated if it alone exceeds the
+budget), and a warning chip is shown.
 
 #### Scenario: Very long conversation is truncated with warning
 - **WHEN** the user has exchanged 20+ messages and the total exceeds the budget
@@ -74,15 +86,20 @@ visible text and rendered as inline action cards.
 - **THEN** no action cards are rendered
 - **AND** the raw text (including the marker) stays visible in the bubble
 
-### Requirement: Every proposed action requires an explicit Apply click
+### Requirement: Every proposed action requires an explicit Apply click and supports Undo
 The system SHALL NOT call any filesystem-mutating primitive in response to an
 assistant message; only a user click on a card's **Apply** may cause a
-mutation.
+mutation. Applied cards SHALL record their journal batch ID, keep global Undo
+in sync, and expose a per-card **Undo** action.
 
 #### Scenario: Actions received but not clicked leave the FS untouched
 - **WHEN** the assistant proposes a rename
 - **AND** the user does not click Apply
 - **THEN** no `rename`/`move`/`write`/`deleteToTrash` call reaches the backend
+
+#### Scenario: Applied card can be undone inline
+- **WHEN** the user applies a proposed action card and clicks **Undo** on that card
+- **THEN** Clive reverts the journaled batch and marks the card as undone
 
 ### Requirement: Action proposals are pre-validated and guard-blocked cards render as disabled
 The system SHALL run each proposed action through `validateChatAction` (name

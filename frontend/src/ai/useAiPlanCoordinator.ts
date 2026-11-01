@@ -7,6 +7,7 @@ import type { FileEntry } from '../api.js'
  * cancellation and review/apply state remain local to this module. */
 export function useAiPlanCoordinator(args: {
   enabled?: boolean
+  cloudAllowed?: boolean
   entries: FileEntry[]
   currentPath: string
   guardOn: boolean

@@ -6,18 +6,122 @@
  * around the single injected model call, so they can be unit-tested by faking
  * `callModel`.
  */
+import type { ModelMessage } from 'ai'
 import { z } from 'zod'
 import i18n from '../i18n'
 import { budgetFiles, renderBudgeted, type FileContent } from './budget'
-import { generateStructured, type AiHealth } from './runtime'
+import { generateStructured, streamChat, type AiHealth, type AiResponseMeta } from './runtime'
 import { validateNewName, validateRenames, uniqueName, type ValidatedRename } from './safety'
+
+export const ACTION_OPEN = '<<<JSON>>>'
+export const ACTION_CLOSE = '<<<END>>>'
+export const ACTION_TIMEOUT_MS = 120_000
 
 export interface ActionDeps {
   model: string
   health: AiHealth
   signal?: AbortSignal
-  /** Injected so tests can fake the model; production passes generateStructured. */
+  timeoutMs?: number
+  onResponse?: (meta: AiResponseMeta) => void
+  /** Injected so tests can fake structured calls. */
   callModel?: typeof generateStructured
+  /** Injected so tests can fake streaming calls; production uses streamChat. */
+  callStream?: typeof streamChat
+}
+
+function targetLanguage(): string {
+  return i18n.language?.toLowerCase().startsWith('it') ? 'Italian' : 'English'
+}
+
+/** Strip `<think>...</think>` blocks and extract a JSON object from delimited, fenced, or raw text. */
+export function extractActionJson(raw: string): Record<string, unknown> | null {
+  const cleaned = raw.replace(/<think>[\s\S]*?<\/think>/gi, '').trim()
+  const open = cleaned.indexOf(ACTION_OPEN)
+  const close = cleaned.indexOf(ACTION_CLOSE, open > -1 ? open + ACTION_OPEN.length : 0)
+  const candidates: string[] = []
+  if (open > -1 && close > open) {
+    candidates.push(cleaned.slice(open + ACTION_OPEN.length, close).trim())
+  }
+  const fenced = /```(?:json)?\s*([\s\S]*?)```/i.exec(cleaned)
+  if (fenced?.[1]) candidates.push(fenced[1].trim())
+  const firstBrace = cleaned.indexOf('{')
+  const lastBrace = cleaned.lastIndexOf('}')
+  if (firstBrace > -1 && lastBrace > firstBrace) {
+    candidates.push(cleaned.slice(firstBrace, lastBrace + 1))
+  }
+  for (const candidate of candidates) {
+    try {
+      const parsed = JSON.parse(candidate) as unknown
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        return parsed as Record<string, unknown>
+      }
+    } catch {
+      /* try next candidate */
+    }
+  }
+  return null
+}
+
+async function runActionJson<S extends z.ZodType>(args: {
+  deps: ActionDeps
+  schema: S
+  system: string
+  prompt: string
+}): Promise<z.output<S>> {
+  const timeoutMs = args.deps.timeoutMs ?? ACTION_TIMEOUT_MS
+  if (args.deps.callModel && !args.deps.callStream) {
+    const out = await args.deps.callModel({
+      model: args.deps.model,
+      schema: args.schema,
+      system: args.system,
+      prompt: args.prompt,
+      signal: args.deps.signal,
+      timeoutMs,
+      onResponse: args.deps.onResponse,
+    })
+    return args.schema.parse(out ?? {})
+  }
+
+  const stream = args.deps.callStream ?? streamChat
+  let streamError: unknown
+  try {
+    let raw = ''
+    for await (const chunk of stream({
+      model: args.deps.model,
+      system: `${args.system} Emit ONLY the JSON object wrapped between ${ACTION_OPEN} and ${ACTION_CLOSE}.`,
+      prompt: args.prompt,
+      signal: args.deps.signal,
+      timeoutMs,
+      onResponse: args.deps.onResponse,
+    })) {
+      raw += chunk
+    }
+    const extracted = extractActionJson(raw)
+    if (extracted) {
+      const parsed = args.schema.safeParse(extracted)
+      if (parsed.success) return parsed.data
+    }
+    streamError = new Error('Model reply did not contain a valid JSON payload')
+  } catch (err) {
+    if (args.deps.signal?.aborted) throw err
+    streamError = err
+  }
+
+  if (args.deps.callStream && !args.deps.callModel) {
+    throw streamError
+  }
+
+  const call = args.deps.callModel ?? generateStructured
+  const fallback = await call({
+    model: args.deps.model,
+    schema: args.schema,
+    system: args.system,
+    prompt: args.prompt,
+    signal: args.deps.signal,
+    timeoutMs,
+    onResponse: args.deps.onResponse,
+  })
+  return args.schema.parse(fallback ?? {})
 }
 
 export function aiUnavailable(health: AiHealth): string | null {
@@ -48,18 +152,21 @@ export async function proposeRenames(
   const unavailable = aiUnavailable(deps.health)
   if (unavailable) throw new Error(unavailable)
   const blocks = budgetFiles(files)
+  const lang = targetLanguage()
+  const system =
+    'You are a careful file-renaming assistant. ' +
+    'Reply ONLY with JSON { "renames": [ { "path": string, "newName": string } ] }. ' +
+    `Use the exact input paths and write descriptive lowercase filenames in ${lang}, preserving each file extension.`
   const prompt =
     'Rename these files with short, descriptive, lowercase names, keeping the extension. ' +
-    'Reply ONLY with JSON { "renames": [ { "path": string, "newName": string } ] }. ' +
-    'Use the exact input paths and write all names in English.\n\n' +
+    'Return JSON { "renames": [ { "path": string, "newName": string } ] }.\n\n' +
     renderBudgeted(blocks)
-  const call = deps.callModel ?? generateStructured
-  const out = (await call({
-    model: deps.model,
+  const out = await runActionJson({
+    deps,
     schema: RenameResponseSchema,
+    system,
     prompt,
-    signal: deps.signal,
-  })) as { renames?: { path: string; newName: string }[] }
+  })
   const ops = (out.renames ?? []).map((r) => ({ path: r.path, newName: r.newName }))
   const validated = validateRenames(ops, existingNames)
   const byPath = new Map(validated.map((v) => [v.path, v]))
@@ -72,7 +179,7 @@ export async function proposeRenames(
 
 const SummarySchema = z.object({ summary: z.string() })
 
-/** Produce a short summary/description of the given files. */
+/** Produce a short summary/description of the given files (supports vision attachments). */
 export async function summarize(
   files: FileContent[],
   deps: ActionDeps,
@@ -80,15 +187,58 @@ export async function summarize(
   const unavailable = aiUnavailable(deps.health)
   if (unavailable) throw new Error(unavailable)
   const blocks = budgetFiles(files)
-  const call = deps.callModel ?? generateStructured
-  const out = (await call({
+  const rendered = renderBudgeted(blocks)
+  const lang = targetLanguage()
+  const timeoutMs = deps.timeoutMs ?? ACTION_TIMEOUT_MS
+
+  if (deps.callModel && !deps.callStream) {
+    const out = (await deps.callModel({
+      model: deps.model,
+      schema: SummarySchema,
+      system: `You are an assistant that concisely summarizes files. Always answer in ${lang}. Respond in JSON format.`,
+      prompt: rendered,
+      signal: deps.signal,
+      timeoutMs,
+      onResponse: deps.onResponse,
+    })) as { summary?: string }
+    return out.summary ?? ''
+  }
+
+  const images = files.filter((f): f is FileContent & { imageBase64: string } => !!f.imageBase64)
+  const messages: ModelMessage[] | undefined = images.length
+    ? [
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: rendered },
+            ...images.map((img) => ({
+              type: 'image' as const,
+              image: img.imageBase64,
+              mediaType: img.imageMimeType ?? 'image/png',
+            })),
+          ],
+        },
+      ]
+    : undefined
+
+  const stream = deps.callStream ?? streamChat
+  let raw = ''
+  for await (const chunk of stream({
     model: deps.model,
-    schema: SummarySchema,
-    system: 'You are an assistant that concisely summarizes files. Always answer in English. Respond in JSON format.',
-    prompt: renderBudgeted(blocks),
+    system: `You are an assistant that concisely summarizes files and images. Answer in ${lang} using clear, concise prose (no JSON wrapper).`,
+    ...(messages ? { messages } : { prompt: rendered }),
     signal: deps.signal,
-  })) as { summary?: string }
-  return out.summary ?? ''
+    timeoutMs,
+    onResponse: deps.onResponse,
+  })) {
+    raw += chunk
+  }
+  const cleaned = raw.replace(/<think>[\s\S]*?<\/think>/gi, '').trim()
+  if (cleaned.startsWith('{') && cleaned.endsWith('}')) {
+    const maybeJson = extractActionJson(cleaned)
+    if (typeof maybeJson?.summary === 'string') return maybeJson.summary.trim()
+  }
+  return cleaned
 }
 
 const GenerateSchema = z.object({ name: z.string(), body: z.string() })
@@ -105,14 +255,16 @@ export async function generateContent(
 ): Promise<GeneratedFile> {
   const unavailable = aiUnavailable(deps.health)
   if (unavailable) throw new Error(unavailable)
-  const call = deps.callModel ?? generateStructured
-  const out = (await call({
-    model: deps.model,
+  const lang = targetLanguage()
+  const out = await runActionJson({
+    deps,
     schema: GenerateSchema,
-    system: 'Generate ONE new file: pick a sensible name (with extension) and the content. Respond in English. Respond in JSON format.',
-    prompt: instruction,
-    signal: deps.signal,
-  })) as { name?: string; body?: string }
+    system:
+      `Generate ONE new file: pick a sensible filename (with extension) and the file body. ` +
+      `Match the language requested by the user (defaulting to ${lang}). ` +
+      'Respond in JSON format { "name": string, "body": string }.',
+    prompt: `${instruction}\n\nReturn JSON { "name": string, "body": string }.`,
+  })
   return { name: out.name ?? '', body: out.body ?? '' }
 }
 
@@ -154,17 +306,16 @@ export async function proposeOrganize(
   if (unavailable) throw new Error(unavailable)
   const byPath = new Map(files.map((f) => [f.path, f]))
   const blocks = budgetFiles(files)
-  const call = deps.callModel ?? generateStructured
-  const out = (await call({
-    model: deps.model,
+  const lang = targetLanguage()
+  const out = await runActionJson({
+    deps,
     schema: OrganizeSchema,
     system:
       'Organize these files into subfolders by type/topic. ' +
       'Reply ONLY with JSON { "groups": [ { "folder": string, "files": [path] } ] }. ' +
-      'Use the exact input paths. Use English folder names.',
-    prompt: renderBudgeted(blocks),
-    signal: deps.signal,
-  })) as { groups?: { folder: string; files: string[] }[] }
+      `Use the exact input paths. Use clear folder names in ${lang}.`,
+    prompt: `${renderBudgeted(blocks)}\n\nReturn JSON { "groups": [ { "folder": string, "files": [path] } ] }.`,
+  })
 
   const folders = new Set<string>()
   const moves: MoveAssignment[] = []

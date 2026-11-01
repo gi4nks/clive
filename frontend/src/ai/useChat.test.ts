@@ -95,6 +95,32 @@ describe('useChat', () => {
     expect(call?.prompt).toContain('sub/')
   })
 
+  it('passes a model-sized prompt and output cap to the stream', async () => {
+    vi.mocked(runtime.streamChat).mockReturnValue(fakeStream(['organized'])() as never)
+    const d = {
+      ...deps(),
+      contextLength: 1024,
+      entries: Array.from({ length: 300 }, (_, i) => ({
+        name: `desktop-document-${i}.pdf`, path: `/d/desktop-document-${i}.pdf`,
+        isDir: false, size: 1, modified: 0, extension: 'pdf',
+      })) as never[],
+    }
+    const { result } = renderHook(() => useChat(d))
+    await act(async () => { await result.current.send('How can I organize everything on my desktop?') })
+    const call = vi.mocked(runtime.streamChat).mock.calls.at(-1)?.[0]
+    expect(call?.maxOutputTokens).toBe(512)
+    expect(call?.prompt).toContain('How can I organize everything on my desktop?')
+    expect(call?.prompt.length).toBeLessThan(300 * 24)
+  })
+
+  it('reports an empty provider stream instead of silently showing a blank reply', async () => {
+    vi.mocked(runtime.streamChat).mockReturnValue(fakeStream([])() as never)
+    const { result } = renderHook(() => useChat(deps()))
+    await act(async () => { await result.current.send('hello') })
+    expect(result.current.error).toContain('finished without returning text')
+    expect(result.current.messages[1].content).toBe('')
+  })
+
   it('keeps the complete streamed text and reports provider length truncation', async () => {
     const stream = vi.fn(async function* (args: { onFinish?: (meta: { finishReason: string }) => void }) {
       yield 'part one '
@@ -314,7 +340,7 @@ describe('useChat', () => {
   })
 
   it('sets historyTruncated when the conversation overflows and clears it on reset', async () => {
-    vi.mocked(runtime.streamChat).mockReturnValue(fakeStream(['ok'])() as never)
+    vi.mocked(runtime.streamChat).mockImplementation(() => fakeStream(['ok'])() as never)
     const { result } = renderHook(() => useChat(deps()))
     await act(async () => {
       await result.current.send('x'.repeat(13000))
@@ -357,5 +383,52 @@ describe('useChat', () => {
     })
     expect(result.current.messages.length).toBe(0)
     expect(result.current.streaming).toBe(false)
+  })
+
+  it('blocks cloud chat when cloudAllowed is false', async () => {
+    const d = { ...deps(), cloudAllowed: false }
+    const { result } = renderHook(() => useChat(d))
+    await act(async () => {
+      await result.current.send('hello cloud')
+    })
+    expect(runtime.streamChat).not.toHaveBeenCalled()
+    expect(result.current.error).toContain('Cloud')
+  })
+
+  it('collects vision image payloads when model supports vision and supports per-card undoAction', async () => {
+    vi.mocked(fsBridge.collectFileContents).mockResolvedValueOnce([
+      { path: '/d/photo.png', name: 'photo.png', size: 100, isDir: false, text: null, imageBase64: 'aW1n', imageMimeType: 'image/png' },
+    ])
+    vi.mocked(runtime.streamChat).mockReturnValue(streamTrash('/d/photo.png') as never)
+    vi.mocked(api.undoPlan).mockResolvedValueOnce({ applied: 1, skipped: 0, failed: [], batchId: 'test-batch', total: 1, durationMs: 1, phaseCounts: {} })
+    const onBatchApplied = vi.fn()
+    const d = {
+      ...deps(),
+      model: 'ollama/qwen2.5-vl',
+      onBatchApplied,
+      selected: [
+        { name: 'photo.png', path: '/d/photo.png', isDir: false, size: 100, modified: 0, extension: 'png' },
+      ] as never[],
+    }
+    const { result } = renderHook(() => useChat(d))
+    await act(async () => {
+      await result.current.send('check and trash')
+    })
+    expect(fsBridge.collectFileContents).toHaveBeenCalledWith(d.selected, { includeImages: true })
+    const streamCall = vi.mocked(runtime.streamChat).mock.calls.at(-1)?.[0]
+    expect(Array.isArray(streamCall?.messages?.at(-1)?.content)).toBe(true)
+
+    await act(async () => {
+      await result.current.applyAction(1, 0)
+    })
+    expect(onBatchApplied).toHaveBeenCalledWith('test-batch', '/d')
+    expect(result.current.messages[1].actionBatchIds?.[0]).toBe('test-batch')
+
+    await act(async () => {
+      await result.current.undoAction(1, 0)
+    })
+    expect(api.undoPlan).toHaveBeenCalledWith('test-batch')
+    expect(result.current.messages[1].actionsUndone?.[0]).toBe(true)
+    expect(result.current.messages[1].actionBatchIds?.[0]).toBeNull()
   })
 })

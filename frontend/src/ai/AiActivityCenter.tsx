@@ -75,7 +75,9 @@ export function AiActivityCenter({ open, onClose, onOpenTechnical, planBusy, pla
                     <span className={`font-semibold ${statusClass(log.status)}`}>{log.status === 'pending' ? t('activity.running') : t(`activity.status.${log.status}`, { defaultValue: log.status })}</span>
                     <span className="font-mono text-[10px] opacity-50">{new Date(log.timestamp).toLocaleTimeString()}</span>
                   </div>
-                  <div className="mt-1 truncate font-medium">{log.kind === 'chat' ? t('activity.chat') : t('activity.plan')} · {phaseLabel(log.stage ?? 'health')} · {log.model}</div>
+                  <div className="mt-1 truncate font-medium">
+                    {log.kind === 'chat' ? t('activity.chat') : log.kind === 'action' ? t('activity.action') : t('activity.plan')} · {phaseLabel(log.stage ?? 'health')} · {log.model}
+                  </div>
                   <div className="mt-1 flex items-center justify-between text-[11px] opacity-60">
                     <span>{log.expandedOpsCount !== undefined ? t('activity.operations', { count: log.expandedOpsCount }) : log.errorDetails ?? t('activity.waiting')}</span>
                     <span>{t('activity.events', { count: log.events?.length ?? 0 })}</span>

@@ -30,8 +30,8 @@ The system SHALL generate the contents of a new file from a prompt, proposing a 
 - **WHEN** generated content is accepted
 - **THEN** the file is created at the current folder only after the user confirms the name and content
 
-### Requirement: Actions are cancellable and non-blocking
-Every AI action SHALL run without blocking the UI, expose an in-flight state that prevents duplicate submission, and support cancellation.
+### Requirement: Actions are cancellable, localized, resilient, and observable
+Every AI action SHALL run without blocking the UI, expose an in-flight state that prevents duplicate submission, support cancellation, prompt in the active UI language (`en` / `it`), tolerate reasoning tags and fenced JSON responses across local and cloud providers, and record execution telemetry in the AI Activity Center.
 
 #### Scenario: Prevent double submit
 - **WHEN** an action is already running for the current target

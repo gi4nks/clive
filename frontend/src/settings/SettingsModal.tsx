@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { checkHealth, listAvailableModels, type AiHealth, type ModelOption } from '../ai/runtime'
 import { aiAddProvider, aiRemoveProvider, aiSetProvider, buildInfo, type BuildInfo } from '../api'
@@ -22,7 +22,14 @@ function Row({ label, children }: { label: string; children: ReactNode }) {
 }
 
 /** AI tab: provider master-detail (list left, settings of the selected one right). */
-function AiTab({ health, models, onChanged }: { health: AiHealth | null; models: ModelOption[]; onChanged: () => void }) {
+function AiTab({ health, models, modelsLoading, modelsError, onRefreshModels, onChanged }: {
+  health: AiHealth | null
+  models: ModelOption[]
+  modelsLoading: boolean
+  modelsError: string
+  onRefreshModels: () => void
+  onChanged: () => void
+}) {
   const { t } = useTranslation()
   const [cfg, set] = useAppConfig()
   const registry = useProviderRegistry()
@@ -45,6 +52,16 @@ function AiTab({ health, models, onChanged }: { health: AiHealth | null; models:
   }
   const base = (p: GatewayProvider) => (draft && sel === p.id ? draft.base : p.baseUrl)
   const key = (p: GatewayProvider) => (draft && sel === p.id ? draft.key : '')
+  const providerModels = models.filter((model) => model.provider === shown?.id)
+  const selectedModel = cfg.ai.provider === shown?.id ? cfg.ai.model : ''
+  const selectedProviderModel = providerModels.find((model) => model.id === selectedModel)
+  const firstProviderModel = providerModels.find((model) => model.state === 'ready' || model.loaded === true) ?? providerModels[0]
+
+  const modelStateLabel = (model: ModelOption) => {
+    if (model.state === 'ready' || model.loaded === true) return t('settings.aiModelReady')
+    if (model.state === 'unloaded' || model.loaded === false) return t('settings.aiModelUnloaded')
+    return model.state || t('settings.aiModelStatusUnknown')
+  }
 
   const save = async (id: string) => {
     setSaving(true)
@@ -63,7 +80,8 @@ function AiTab({ health, models, onChanged }: { health: AiHealth | null; models:
   }
 
   const applyDefault = (id: string) => {
-    const first = models.find((m) => m.provider === id)
+    const providerList = models.filter((m) => m.provider === id)
+    const first = providerList.find((m) => m.state === 'ready' || m.loaded === true) ?? providerList[0]
     set({ ai: { provider: id, model: first?.id ?? '' } })
     onChanged()
   }
@@ -157,11 +175,59 @@ function AiTab({ health, models, onChanged }: { health: AiHealth | null; models:
                 />
                 <button className="btn btn-sm btn-primary shrink-0" disabled={saving} onClick={() => void save(shown.id)}>{t('settings.aiSave')}</button>
               </div>
+              <div className="space-y-1 pt-1">
+                <label className="block text-[11px] uppercase tracking-wide opacity-60" htmlFor="ai-model-select">{t('settings.aiSelectModel')}</label>
+                <div className="flex gap-1">
+                  <select
+                    id="ai-model-select"
+                    aria-label={t('settings.aiSelectModel')}
+                    className="select select-sm select-bordered min-w-0 flex-1 font-mono text-xs"
+                    value={selectedModel}
+                    disabled={modelsLoading || providerModels.length === 0}
+                    onChange={(event) => set({ ai: { provider: shown.id, model: event.target.value } })}
+                  >
+                    <option value="">{t('settings.aiChooseModel')}</option>
+                    {providerModels.map((model) => (
+                      <option key={model.id} value={model.id}>
+                        {model.name} · {modelStateLabel(model)}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-ghost shrink-0"
+                    aria-label={t('settings.aiRefreshModels')}
+                    title={t('settings.aiRefreshModels')}
+                    disabled={modelsLoading}
+                    onClick={onRefreshModels}
+                  >
+                    {modelsLoading ? <span className="loading loading-spinner loading-xs" /> : '↻'}
+                  </button>
+                </div>
+                {modelsLoading && <p className="text-[11px] opacity-60">{t('settings.aiModelsLoading')}</p>}
+                {!modelsLoading && modelsError && <p role="alert" className="text-[11px] text-error">{t('settings.aiModelsError')}: {modelsError}</p>}
+                {!modelsLoading && !modelsError && providerModels.length === 0 && <p className="text-[11px] opacity-60">{t('settings.aiModelsEmpty')}</p>}
+                {!modelsLoading && selectedProviderModel && (
+                  <p className="text-[11px] opacity-60">
+                    {modelStateLabel(selectedProviderModel)}
+                    {selectedProviderModel.contextLength
+                      ? ` · ${t('settings.aiContextLength', { count: selectedProviderModel.contextLength })}`
+                      : ''}
+                    {selectedProviderModel.capabilities?.length
+                      ? ` · ${t('settings.aiModelCapabilities')}: ${selectedProviderModel.capabilities.join(', ')}`
+                      : ''}
+                  </p>
+                )}
+              </div>
               <div className="text-[11px] opacity-60">
-                {t('settings.defaultModel')}: {shown.id === cfg.ai.provider ? (models.find((m) => m.id === cfg.ai.model)?.name ?? cfg.ai.model) || '—' : models.find((m) => m.provider === shown.id)?.name ?? '—'}
+                {t('settings.defaultModel')}: {shown.id === cfg.ai.provider ? (selectedProviderModel?.name ?? cfg.ai.model) || '—' : '—'}
               </div>
               <div className="flex flex-wrap gap-2 pt-1">
-                <button className="btn btn-sm btn-outline" disabled={shown.id === cfg.ai.provider} onClick={() => applyDefault(shown.id)}>
+                <button
+                  className="btn btn-sm btn-outline"
+                  disabled={shown.id === cfg.ai.provider && (!!cfg.ai.model || !firstProviderModel)}
+                  onClick={() => applyDefault(shown.id)}
+                >
                   {t('settings.aiUseDefault')}
                 </button>
                 {!shown.builtin && (
@@ -184,12 +250,14 @@ function AiTab({ health, models, onChanged }: { health: AiHealth | null; models:
   )
 }
 
-export function SettingsModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+export function SettingsModal({ open, onClose, onAiChanged }: { open: boolean; onClose: () => void; onAiChanged?: () => void }) {
   const { t } = useTranslation()
   const [cfg, set] = useAppConfig()
   const [tab, setTab] = useState<Tab>('general')
   const [health, setHealth] = useState<AiHealth | null>(null)
   const [models, setModels] = useState<ModelOption[]>([])
+  const [modelsLoading, setModelsLoading] = useState(false)
+  const [modelsError, setModelsError] = useState('')
   const [importMsg, setImportMsg] = useState('')
   const [aiReload, setAiReload] = useState(0)
   // undefined = loading; null = backend has no build_info (stale instance); else fresh.
@@ -199,13 +267,26 @@ export function SettingsModal({ open, onClose }: { open: boolean; onClose: () =>
   const [remoteKind, setRemoteKind] = useState<RemoteLocation['kind']>('local-sync')
   const [remoteEndpoint, setRemoteEndpoint] = useState('')
 
+  const refreshModels = useCallback(async () => {
+    setModelsLoading(true)
+    setModelsError('')
+    try {
+      setModels(await listAvailableModels())
+    } catch (error) {
+      setModels([])
+      setModelsError(error instanceof Error ? error.message : String(error))
+    } finally {
+      setModelsLoading(false)
+    }
+  }, [])
+
   useEffect(() => {
     if (!open) return
     void refreshProviders().catch(() => undefined)
     void checkHealth().then(setHealth)
-    listAvailableModels().then(setModels).catch(() => undefined)
+    void refreshModels()
     buildInfo().then(setBuild).catch(() => setBuild(null))
-  }, [open, aiReload])
+  }, [open, aiReload, refreshModels])
 
   if (!open) return
 
@@ -377,7 +458,17 @@ export function SettingsModal({ open, onClose }: { open: boolean; onClose: () =>
           )}
 
           {tab === 'ai' && (
-            <AiTab health={health} models={models} onChanged={() => setAiReload((n) => n + 1)} />
+            <AiTab
+              health={health}
+              models={models}
+              modelsLoading={modelsLoading}
+              modelsError={modelsError}
+              onRefreshModels={() => void refreshModels()}
+              onChanged={() => {
+                setAiReload((n) => n + 1)
+                onAiChanged?.()
+              }}
+            />
           )}
 
           {tab === 'advanced' && (
