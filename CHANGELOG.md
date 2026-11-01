@@ -4,6 +4,8 @@ All notable changes to Clive are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows SemVer, with the version defined once in `tauri.conf.json` (build.rs enforces Cargo/package parity). Releases are tagged `vX.Y.Z` (annotated).
 
 ## [Unreleased]
+
+## [1.3.1] - 2026-11-01
 ### Fixed
 - Migrate the GitHub Actions macOS DMG build workflow from the retired `macos-14` runner image to `macos-15`
 
