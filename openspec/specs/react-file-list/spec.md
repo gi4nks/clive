@@ -10,11 +10,12 @@ The system SHALL display a list of files with their name, size, and file kind/ky
 
 ### Requirement: File list uses Clive's own file icons
 The system SHALL draw file and folder icons with Clive-owned vector artwork.
-Icons SHALL use a consistent, subdued visual style and distinct shapes or marks
-for common file types and system folders. Card-mode icons SHALL use most of the
-available 80px icon area instead of remaining at compact row size. Rendering SHALL be synchronous and
-SHALL NOT replace icons with operating-system-provided images after the rows
-appear.
+Icons SHALL use tactile macOS gradients, subtle highlights, and distinct shapes
+or marks for common file types and system folders. Card-mode icons SHALL render
+directly at 76×76 px inside their 80×80 px icon area without an enclosing solid
+tile background, and MAY include format/language badges at card scale while
+keeping compact row icons clean. Rendering SHALL be synchronous and SHALL NOT
+replace icons with operating-system-provided images after the rows appear.
 
 #### Scenario: A directory listing renders Clive icons
 - **WHEN** the file list contains files or folders

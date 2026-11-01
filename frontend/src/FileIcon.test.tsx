@@ -62,8 +62,15 @@ describe('FileIcon kind mapping', () => {
     const pdfArt = container.querySelector('svg')?.innerHTML
     rerender(<FileIcon entry={e({ name: 'main.ts', extension: 'ts' })} size="card" />)
     const codeArt = container.querySelector('svg')?.innerHTML
+    rerender(<FileIcon entry={e({ name: 'lib.rs', extension: 'rs' })} size="card" />)
+    const rustArt = container.querySelector('svg')?.innerHTML
+    rerender(<FileIcon entry={e({ name: 'main.ts', extension: 'ts' })} size="row" />)
+    const codeRowArt = container.querySelector('svg')?.innerHTML
     expect(pdfArt).toContain('PDF')
     expect(codeArt).toContain('#3d5369')
+    expect(codeArt).toContain('TS')
+    expect(rustArt).toContain('RS')
+    expect(codeRowArt).not.toContain('>TS<')
     expect(pdfArt).not.toEqual(codeArt)
   })
 

@@ -8,6 +8,7 @@ import { useVolumes } from './volumes'
 import { confirmAsk } from './confirm'
 import type { FileTag } from './api'
 import { TagDot } from './TagEditor'
+import { UiIcon, placeIconName, volumeIconName, type UiIconName } from './UiIcons'
 
 interface Props {
   open: boolean
@@ -68,7 +69,7 @@ export function Sidebar(props: Props) {
         <button data-bar-control className="tooltip tooltip-right btn btn-ghost btn-xs !min-h-0" aria-label={t('sidebar.expand')}
               title={t('sidebar.expand')}
         data-tip={t('sidebar.expand')} onClick={props.onToggle}>
-          ▸
+          <UiIcon name="chevronRight" className="h-3.5 w-3.5" />
         </button>
         <span className="mt-2 select-none text-[10px] opacity-40" style={{ writingMode: 'vertical-rl' }}>
           {t('sidebar.title')}
@@ -77,7 +78,7 @@ export function Sidebar(props: Props) {
     )
   }
 
-  const Row = ({ path, label, fixed }: { path: string; label: string; fixed?: boolean }) => (
+  const Row = ({ path, label, icon, fixed }: { path: string; label: string; icon: UiIconName; fixed?: boolean }) => (
     <li
       draggable={!fixed}
       onDragStart={(e) => e.dataTransfer.setData('text/x-pin', path)}
@@ -103,11 +104,11 @@ export function Sidebar(props: Props) {
           props.onDropToDir(parentOf(path), paths, e.altKey)
         }
       }}
-      className={`group ${dragOverRow === path ? 'bg-primary/15' : ''}`}
+      className={`group relative ${dragOverRow === path ? 'bg-primary/15' : ''}`}
     >
       <button
         data-bar-control
-        className="w-full text-left"
+        className={`flex w-full min-w-0 items-center gap-2 text-left ${!fixed ? 'pr-6' : ''}`}
         onClick={() => props.onOpenItem(path)}
         title={path}
         onContextMenu={(e) => {
@@ -116,18 +117,19 @@ export function Sidebar(props: Props) {
           props.onRowContext(e, { path, label, fixed: !!fixed })
         }}
       >
-        <span className="block truncate">{label}</span>
+        <UiIcon name={icon} className="h-3.5 w-3.5 text-primary/75" />
+        <span className="min-w-0 flex-1 truncate">{label}</span>
       </button>
       {!fixed && (
         <button
           data-bar-control
-          className="tooltip tooltip-right btn btn-ghost btn-xs absolute right-1 hidden !h-5 !min-h-0 group-hover:inline-flex"
+          className="tooltip tooltip-right btn btn-ghost btn-xs absolute right-1 hidden !h-5 !min-h-0 px-1 group-hover:inline-flex"
           aria-label={t('sidebar.unpin')}
               title={t('sidebar.unpin')}
         data-tip={t('sidebar.unpin')}
           onClick={() => props.onUnpin(path)}
         >
-          ×
+          <UiIcon name="close" className="h-3 w-3" />
         </button>
       )}
     </li>
@@ -155,11 +157,11 @@ export function Sidebar(props: Props) {
         <div className="flex items-center">
           <button data-bar-control className="tooltip tooltip-right btn btn-ghost btn-xs !h-6 !min-h-0 px-1.5" aria-label={t('sidebar.add')} title={t('sidebar.add')}
         data-tip={t('sidebar.add')} onClick={props.onAdd}>
-            ＋
+            <UiIcon name="plus" className="h-3.5 w-3.5" />
           </button>
           <button data-bar-control className="tooltip tooltip-right btn btn-ghost btn-xs !h-6 !min-h-0 px-1.5" aria-label={t('sidebar.collapse')} title={t('sidebar.collapse')}
         data-tip={t('sidebar.collapse')} onClick={props.onToggle}>
-            ◂
+            <UiIcon name="chevronLeft" className="h-3.5 w-3.5" />
           </button>
         </div>
       </div>
@@ -167,25 +169,27 @@ export function Sidebar(props: Props) {
       <ul className="menu menu-sm min-w-0 w-full rounded-none bg-transparent p-1">
         <li className="menu-title px-2 text-[10px] uppercase opacity-60">{t('sidebar.places')}</li>
         {places.map((pl) => (
-          <Row key={pl.path} path={pl.path} label={t(`places.${pl.labelKey}`)} fixed />
+          <Row key={pl.path} path={pl.path} label={t(`places.${pl.labelKey}`)} icon={placeIconName(pl.labelKey)} fixed />
         ))}
         {props.pinned.length > 0 && <li className="menu-title mt-2 px-2 text-[10px] uppercase opacity-60">{t('sidebar.favourites')}</li>}
-        {props.pinned.map((p) => (
-          <Row key={p} path={p} label={pinnedLabel(p)} />
-        ))}
+        {props.pinned.map((p) => {
+          const base = pinnedLabel(p)
+          const looksLikeFile = /\.[a-z0-9]{1,8}$/i.test(base) && !base.endsWith('.app')
+          return <Row key={p} path={p} label={base} icon={looksLikeFile ? 'file' : 'folder'} />
+        })}
         {props.pinned.length >= MAX_PINNED && <li className="px-2 py-1 text-[10px] opacity-50">{t('sidebar.maxReached')}</li>}
         <li className="relative mt-2 !flex !w-full !items-center !justify-start px-2 py-1 text-left text-[10px] font-semibold uppercase tracking-wide opacity-60">
           <span>{t('sidebar.tags')}</span>
           <button
             type="button"
             data-bar-control
-            className="tooltip tooltip-right btn btn-ghost btn-xs absolute right-2 top-1/2 !h-5 !min-h-0 -translate-y-1/2 px-1.5 text-sm normal-case opacity-100"
+            className="tooltip tooltip-right btn btn-ghost btn-xs absolute right-2 top-1/2 !h-5 !min-h-0 -translate-y-1/2 px-1 text-sm normal-case opacity-100"
             aria-label={t('sidebar.editTags')}
             title={t('sidebar.editTags')}
             data-tip={t('sidebar.editTags')}
             disabled={!props.canEditTags}
             onClick={props.onEditTags}
-          >＋</button>
+          ><UiIcon name="plus" className="h-3.5 w-3.5" /></button>
         </li>
         {tags.length === 0 && <li className="px-2 py-1 text-xs leading-snug opacity-50">{t('sidebar.noTags')}</li>}
         {tags.map((tag) => <li key={tag.name.toLocaleLowerCase()}>
@@ -254,21 +258,22 @@ export function Sidebar(props: Props) {
                 disabled={remoteBusy === remote.id}
                 title={remote.path}
               >
-                <span className={`h-2 w-2 shrink-0 rounded-full ${status === 'online' ? 'bg-success' : status === 'offline' ? 'bg-error' : 'bg-base-content/30'}`} aria-label={status === 'online' ? t('sidebar.online') : status === 'offline' ? t('sidebar.offline') : t('sidebar.checking')} />
-                <span className="min-w-0 truncate">{remote.name}</span>
+                <UiIcon name={isSmb ? 'networkGlobe' : 'cloud'} className="h-3.5 w-3.5 text-base-content/65" />
+                <span className="min-w-0 flex-1 truncate">{remote.name}</span>
+                <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${status === 'online' ? 'bg-success' : status === 'offline' ? 'bg-error' : 'bg-base-content/30'}`} aria-label={status === 'online' ? t('sidebar.online') : status === 'offline' ? t('sidebar.offline') : t('sidebar.checking')} />
               </button>
               {isSmb && status === 'online' && (
-                <button data-bar-control className="tooltip tooltip-right btn btn-ghost btn-xs absolute right-7 hidden !h-5 !min-h-0 group-hover:inline-flex" aria-label={t('sidebar.disconnectRemote')} title={t('sidebar.disconnectRemote')}
-        data-tip={t('sidebar.disconnectRemote')} onClick={() => void disconnectRemote()}>↘</button>
+                <button data-bar-control className="tooltip tooltip-right btn btn-ghost btn-xs absolute right-7 hidden !h-5 !min-h-0 px-1 group-hover:inline-flex" aria-label={t('sidebar.disconnectRemote')} title={t('sidebar.disconnectRemote')}
+        data-tip={t('sidebar.disconnectRemote')} onClick={() => void disconnectRemote()}><UiIcon name="disconnect" className="h-3 w-3" /></button>
               )}
               <button
                 data-bar-control
-                className="tooltip tooltip-right btn btn-ghost btn-xs absolute right-1 hidden !h-5 !min-h-0 group-hover:inline-flex"
+                className="tooltip tooltip-right btn btn-ghost btn-xs absolute right-1 hidden !h-5 !min-h-0 px-1 group-hover:inline-flex"
                 aria-label={t('sidebar.removeRemote')}
                 title={t('sidebar.removeRemote')}
         data-tip={t('sidebar.removeRemote')}
                 onClick={() => props.onRemoveRemote(remote.id)}
-              >×</button>
+              ><UiIcon name="close" className="h-3 w-3" /></button>
             </li>
           )
         })}
@@ -300,19 +305,19 @@ export function Sidebar(props: Props) {
                 onContextMenu={(e) => { const xy = openMenu(e); setMenu({ ...xy, items: volumeMenu() }) }}
                 title={`${v.mountPoint} · ${v.device}`}
               >
-                <span aria-hidden className="w-4 shrink-0 text-center">{v.kind === 'internal' ? '💽' : v.kind === 'network' ? '🌐' : '💾'}</span>
+                <UiIcon name={volumeIconName(v.kind)} className="h-3.5 w-3.5 text-base-content/65" />
                 <span className="min-w-0 flex-1 truncate">{v.name}</span>
                 <span className="shrink-0 text-[10px] tabular-nums opacity-50">{formatSize(v.freeBytes)}</span>
               </button>
               {v.ejectable && (
                 <button
                   data-bar-control
-                  className="tooltip tooltip-right btn btn-ghost btn-xs absolute right-1 hidden !h-5 !min-h-0 group-hover:inline-flex"
+                  className="tooltip tooltip-right btn btn-ghost btn-xs absolute right-1 hidden !h-5 !min-h-0 px-1 group-hover:inline-flex"
                   aria-label={t('volumes.eject')}
                   title={t('volumes.eject')}
         data-tip={t('volumes.eject')}
                   onClick={() => void eject()}
-                >⏏</button>
+                ><UiIcon name="eject" className="h-3 w-3" /></button>
               )}
             </li>
           )

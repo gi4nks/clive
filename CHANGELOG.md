@@ -5,11 +5,23 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning fol
 
 ## [Unreleased]
 ### Added
-- Conventional Commit-based release command that previews or applies SemVer version bumps across project manifests
-- Added frontend V8 and Rust LLVM coverage commands with local HTML reports and a documented baseline.
-### Fixed
-- Restored Clive-owned synchronous icons with distinct artwork for common file categories; card mode now renders the icon at 76×76 px in its 80×80 px area.
+- Provider-specific model selection in **Settings → AI**, refreshing model catalogs directly from the gateway with load-state and capability metadata
+- Concurrent bounded gateway probes (`/healthz` and `/v1/models`), 12 MB vision request limits, LAN/private-IP local provider classification, and server-side cloud opt-in enforcement (`x-clive-cloud-allowed`)
+- Multimodal base64 image attachments (`ImagePart`) in AI Chat and Summarize when the selected model supports vision
+- Per-card **Undo** on applied Chat actions, synchronized with the global undo journal, plus AI Activity Center logging for Quick Actions
+- Tactile macOS file/folder artwork in `FileIcon` with card-mode format/language pill badges (`TS`, `RS`, `PY`, `JSON`, `PDF`, `MD`, `ZIP`, `DMG`, etc.) and a unified `16×16` inline stroke icon set (`UiIcons`) across the Navigator, pane rails, preview, and AI drawers
+- Refreshed macOS Dock application icon (`branding/clive-icon.svg` and bundled icon sizes)
+- Separate 85% line-coverage quality gates (`make quality`) for both the Rust and frontend test suites, typed Tauri IPC contract verification, and public `LICENSE` (MIT), `CONTRIBUTING.md`, and `docs/RELEASING.md`
 
+### Changed
+- Grid view file cards now float directly on a clean selection surface without an inner solid grey tile frame
+- Bounded AI chat context and output budgets to the active model's resolved context window, prioritizing complete directory listings for compact local models
+
+### Fixed
+- Resolved 1,024-token context and output starvation when OpenAI-compatible `/v1/models` endpoints omit `context_length`
+- Stripped `<think>...</think>` reasoning blocks and localized Quick Action prompts via resilient streaming-first extraction
+- Exposed `x-clive-*` diagnostic headers across CORS for WebKit and fixed the **Use as default** button state in **Settings → AI**
+- Hardened recursive copy, symlink cycle safety, and mounted network-volume disconnect checks
 
 ## [1.2.1] - 2026-10-16
 ### Fixed

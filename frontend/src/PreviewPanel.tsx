@@ -9,11 +9,9 @@ import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { formatSize, openPath, quickLook, type FileEntry } from './api'
 import { getChildCount } from './childCount'
+import { FileIcon } from './FileIcon'
 import { previewErrorLabel, usePreview } from './preview'
-
-const KIND_ICON: Record<string, string> = {
-  image: '🖼', video: '🎬', audio: '🎵', pdf: '📄', markdown: '📝', text: '📃', folder: '📁', fallback: '❔',
-}
+import { UiIcon } from './UiIcons'
 
 export function PreviewPanel({
   selection,
@@ -46,7 +44,13 @@ export function PreviewPanel({
       className={`flex h-full min-h-0 min-w-0 flex-col border-l border-base-300 bg-base-100 ${expanded ? 'flex-1' : 'w-[22rem] shrink-0'}`}
     >
       <header className="flex shrink-0 items-center gap-2 border-b border-base-300 px-3 py-2">
-        <span aria-hidden className="text-base">{KIND_ICON[state.kind] ?? '❔'}</span>
+        {target ? (
+          <FileIcon entry={target} />
+        ) : (
+          <span aria-hidden className="flex h-8 w-8 items-center justify-center text-base-content/45">
+            <UiIcon name="file" className="h-4 w-4" />
+          </span>
+        )}
         <div className="min-w-0 flex-1">
           <div className="truncate text-sm font-medium" title={state.name}>{state.name || t('preview.empty')}</div>
           <div className="truncate text-[11px] text-base-content/50">
@@ -93,9 +97,9 @@ export function PreviewPanel({
           </pre>
         )}
         {target && (state.kind === 'folder' || state.kind === 'fallback') && (
-          <div className="flex flex-col items-stretch gap-2 rounded-lg border border-base-300 p-3 text-center" data-preview-fallback>
-            <span aria-hidden className="text-4xl">{state.kind === 'folder' ? '📁' : KIND_ICON.fallback}</span>
-            <div className="text-sm font-medium">{state.name}</div>
+          <div className="flex flex-col items-center gap-2 rounded-xl border border-base-300 p-4 text-center" data-preview-fallback>
+            <FileIcon entry={target} size="card" />
+            <div className="max-w-full truncate text-sm font-medium">{state.name}</div>
             {previewErrorLabel(state.error, t, state.size) && <div className="text-xs text-warning">{previewErrorLabel(state.error, t, state.size)}</div>}
             <div className="mt-1 flex justify-center gap-2">
               <button className="btn btn-sm btn-outline" onClick={() => void quickLook(target.path).catch(() => undefined)}>

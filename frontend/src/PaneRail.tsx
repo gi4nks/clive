@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next'
 import { railLabel } from './resize'
 import type { PaneId } from './FilePane'
+import { UiIcon } from './UiIcons'
 
 /**
  * A thin vertical rail shown in place of a collapsed dual-pane. Clicking or
@@ -22,7 +23,7 @@ export function PaneRail({
 }) {
   const { t } = useTranslation()
   const label = railLabel(path, home)
-  const chevron = id === 'left' ? '▸' : '◂'
+  const chevron = id === 'left' ? 'chevronRight' : 'chevronLeft'
   return (
     <button
       type="button"
@@ -34,9 +35,9 @@ export function PaneRail({
     >
       <span
         aria-hidden
-        className="pointer-events-none absolute inset-x-0 top-1 text-center text-[11px] text-base-content"
+        className="pointer-events-none absolute inset-x-0 top-1.5 flex justify-center text-base-content/80"
       >
-        {chevron}
+        <UiIcon name={chevron} className="h-3.5 w-3.5" />
       </span>
       <span
         aria-hidden

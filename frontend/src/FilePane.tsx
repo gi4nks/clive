@@ -5,6 +5,7 @@ import { pinnedLabel } from './pinned'
 import type { SortKey, SortState } from './FileList'
 import { FileList } from './FileList'
 import { splitArchivePath, joinArchivePath } from './archivePath'
+import { UiIcon, placeIconName } from './UiIcons'
 
 export type PaneId = 'left' | 'right'
 export interface PaneState {
@@ -106,7 +107,7 @@ export function FilePane(props: Props) {
         <div className="relative">
           <button data-bar-control className="tooltip tooltip-bottom btn btn-ghost btn-xs !h-6 !min-h-0 px-1.5" title={t('pane.goTo')}
         data-tip={t('pane.goTo')} onClick={() => setGoOpen((o) => !o)}>
-            ⌄
+            <UiIcon name="chevronDown" className="h-3.5 w-3.5" />
           </button>
           {goOpen && (
             <>
@@ -115,7 +116,8 @@ export function FilePane(props: Props) {
                 <li className="menu-title px-2 text-[10px] uppercase opacity-60">{t('pane.goTo')}</li>
                 <li>
                   <button data-bar-control {...dropTo(parentOf(pane.path) || '/')} onClick={() => { props.onNavigate(id, parentOf(pane.path) || '/'); setGoOpen(false) }}>
-                    {t('pane.parent')}
+                    <UiIcon name="chevronUp" className="h-3.5 w-3.5 opacity-65" />
+                    <span>{t('pane.parent')}</span>
                   </button>
                 </li>
                 {props.home &&
@@ -124,7 +126,8 @@ export function FilePane(props: Props) {
                     return (
                       <li key={pl.key}>
                         <button data-bar-control {...dropTo(dir)} onClick={() => { props.onNavigate(id, dir); setGoOpen(false) }}>
-                          {t(`places.${pl.key}`)}
+                          <UiIcon name={placeIconName(pl.key)} className="h-3.5 w-3.5 opacity-70" />
+                          <span>{t(`places.${pl.key}`)}</span>
                         </button>
                       </li>
                     )
@@ -210,7 +213,7 @@ export function FilePane(props: Props) {
             aria-label={t('pane.collapse')}
             onClick={() => props.onCollapse?.(id)}
           >
-            {id === 'left' ? '◂' : '▸'}
+            <UiIcon name={id === 'left' ? 'chevronLeft' : 'chevronRight'} className="h-3.5 w-3.5" />
           </button>
         )}
       </div>

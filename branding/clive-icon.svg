@@ -1,19 +1,67 @@
 <svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
   <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#ff8a65"/>
-      <stop offset="0.55" stop-color="#f4529a"/>
-      <stop offset="1" stop-color="#7c3aed"/>
+    <!-- Soft macOS Dock drop shadow -->
+    <filter id="dockShadow" filterUnits="userSpaceOnUse" x="0" y="0" width="1024" height="1024">
+      <feDropShadow dx="0" dy="16" stdDeviation="18" flood-color="#000000" flood-opacity="0.34"/>
+    </filter>
+    <!-- Tactile lift shadow under folder -->
+    <filter id="innerLift" filterUnits="userSpaceOnUse" x="0" y="0" width="1024" height="1024">
+      <feDropShadow dx="0" dy="14" stdDeviation="16" flood-color="#000000" flood-opacity="0.26"/>
+    </filter>
+
+    <!-- Ceramic / aluminum Apple HIG squircle -->
+    <linearGradient id="bgCeramic" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f8fafc"/>
+      <stop offset="1" stop-color="#dde5f0"/>
     </linearGradient>
-    <linearGradient id="bar" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#ffffff"/>
-      <stop offset="1" stop-color="#ffe9f2"/>
+    <linearGradient id="rimCeramic" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.95"/>
+      <stop offset="1" stop-color="#94a3b8" stop-opacity="0.35"/>
     </linearGradient>
+
+    <!-- Split-tone macOS folder gradients -->
+    <linearGradient id="folderTab" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#2563eb"/>
+      <stop offset="1" stop-color="#0ea5e9"/>
+    </linearGradient>
+    <linearGradient id="leftPanePocket" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#60a5fa"/>
+      <stop offset="1" stop-color="#2563eb"/>
+    </linearGradient>
+    <linearGradient id="rightPanePocket" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#38bdf8"/>
+      <stop offset="1" stop-color="#0284c7"/>
+    </linearGradient>
+
+    <clipPath id="frontPocketClip">
+      <rect x="196" y="366" width="632" height="414" rx="68"/>
+    </clipPath>
+
+    <rect id="sq" x="100" y="100" width="824" height="824" rx="185" ry="185"/>
+    <rect id="sqRim" x="102" y="102" width="820" height="820" rx="183" ry="183"/>
   </defs>
-  <!-- app tile with baked rounded corners -->
-  <rect x="96" y="96" width="832" height="832" rx="196" fill="url(#bg)"/>
-  <rect x="97" y="97" width="830" height="830" rx="195" fill="none" stroke="#ffffff" stroke-opacity="0.24" stroke-width="2"/>
-  <!-- C: open arc + divider bar = dual pane -->
-  <path d="M 712 322 A 262 262 0 1 0 712 702" fill="none" stroke="#ffffff" stroke-width="124" stroke-linecap="round"/>
-  <rect x="576" y="284" width="56" height="452" rx="28" fill="url(#bar)"/>
+
+  <g filter="url(#dockShadow)">
+    <use href="#sq" fill="url(#bgCeramic)"/>
+  </g>
+  <use href="#sqRim" fill="none" stroke="url(#rimCeramic)" stroke-width="5"/>
+
+  <g filter="url(#innerLift)">
+    <!-- Folder Back Tab -->
+    <path d="M 208 310 C 208 274 237 245 273 245 L 418 245 C 439 245 458 255 471 272 L 502 312 C 512 325 527 332 544 332 L 751 332 C 787 332 816 361 816 397 L 816 710 C 816 748 785 778 747 778 L 277 778 C 239 778 208 748 208 710 Z" fill="url(#folderTab)"/>
+
+    <!-- Dual-Pane Document Sheets Peeking Out -->
+    <rect x="244" y="318" width="248" height="90" rx="22" fill="#ffffff"/>
+    <rect x="532" y="318" width="248" height="90" rx="22" fill="#f1f5f9"/>
+
+    <!-- Split-Tone Front Pocket -->
+    <g clip-path="url(#frontPocketClip)">
+      <rect x="196" y="366" width="316" height="414" fill="url(#leftPanePocket)"/>
+      <rect x="512" y="366" width="316" height="414" fill="url(#rightPanePocket)"/>
+      <!-- Crisp center dual-pane seam -->
+      <rect x="509" y="366" width="6" height="414" fill="#ffffff" fill-opacity="0.65"/>
+      <!-- Top specular highlight -->
+      <rect x="196" y="366" width="632" height="6" fill="#ffffff" fill-opacity="0.55"/>
+    </g>
+  </g>
 </svg>

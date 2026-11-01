@@ -49,6 +49,7 @@ import { AiActivityCenter } from './ai/AiActivityCenter'
 import { PlanPanel } from './ai/PlanPanel'
 import { useAiPlanCoordinator } from './ai/useAiPlanCoordinator'
 import { writeLastBatch, readLastBatch, clearLastBatch } from './ai/planJournalStore'
+import { modelCapabilities } from './ai/capabilities'
 import { fullModelId } from './ai/settings'
 import { SettingsModal } from './settings/SettingsModal'
 import { TransferPicker } from './TransferPicker'
@@ -64,6 +65,7 @@ import { TagEditor } from './TagEditor'
 import { useTransferWorkflow } from './useTransferWorkflow'
 import { usePreviewLayout } from './usePreviewLayout'
 import { usePaneNavigation } from './usePaneNavigation'
+import { UiIcon } from './UiIcons'
 
 function Modal({
   title,
@@ -641,12 +643,23 @@ export default function App() {
     }
   }, [assertWritable, currentPath, handleSetStatus])
 
+  const selectedChatModel = ai.models.find((model) => `${model.provider}/${model.id}` === fullModelId(ai.sel))
+  const resolvedChatCaps = modelCapabilities(fullModelId(ai.sel), selectedChatModel)
+  const provisionalChatContext = !selectedChatModel || selectedChatModel.loaded === false || selectedChatModel.state === 'unloaded'
   const chat = useChat({
     enabled: cfg.ai.enabled,
+    cloudAllowed: ai.cloudAllowed,
     currentPath,
     entries: visibleEntries,
     selected: selectedEntries,
     model: fullModelId(ai.sel),
+    modelMeta: selectedChatModel,
+    contextLength: resolvedChatCaps.maxContextTokens,
+    contextIsProvisional: provisionalChatContext,
+    refreshModelContext: ai.refreshModels,
+    onBatchApplied: (batchId, rootPath) => {
+      writeLastBatch({ batchId, rootPath, createdAt: Date.now() })
+    },
     guardOn: cfg.guardSystemLocations,
     location: currentLocation,
     setStatus: handleSetStatus,
@@ -656,12 +669,18 @@ export default function App() {
   // --- AI Plan (Task 6): App owns the pipeline; ChatDrawer only forwards 🪄. ---
   const aiPlan = useAiPlanCoordinator({
     enabled: cfg.ai.enabled,
+    cloudAllowed: ai.cloudAllowed,
     entries,
     currentPath,
     guardOn: cfg.guardSystemLocations,
     model: fullModelId(ai.sel),
   })
   const { plan, createPlan: handleCreatePlan, cancelCreatePlan, planBusy, planNotice, planElapsed, canPlan } = aiPlan
+
+  useEffect(() => {
+    if (!cfg.ai.enabled || !chatOpen) return
+    void ai.ensureReady().catch(() => undefined)
+  }, [cfg.ai.enabled, chatOpen, ai.ensureReady])
 
   useEffect(() => {
     if (cfg.ai.enabled) return
@@ -1436,8 +1455,9 @@ export default function App() {
             className="flex items-center gap-1.5 text-xs text-base-content/60"
             title={clip.paths.join('\n')}
           >
-            <span className="cursor-pointer hover:underline" onClick={handleClearClip} title={t('chip.clearTitle')}>
-              {clip.operation === 'move' ? '✂' : '⧉'} {clip.paths.length} · {clip.operation === 'move' ? t('chip.move') : t('chip.copy')}
+            <span className="inline-flex cursor-pointer items-center gap-1 hover:underline" onClick={handleClearClip} title={t('chip.clearTitle')}>
+              <UiIcon name={clip.operation === 'move' ? 'scissors' : 'copy'} className="h-3.5 w-3.5" />
+              <span>{clip.paths.length} · {clip.operation === 'move' ? t('chip.move') : t('chip.copy')}</span>
             </span>
           </span>
         ) : null}
@@ -1687,7 +1707,7 @@ export default function App() {
           </button>
         </div>
       )}
-      <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} onAiChanged={() => void ai.refresh()} />
       {sidebarAdd && (
         <Modal title={t('sidebar.add')} onClose={() => setSidebarAdd(null)}>
           <input
@@ -1826,8 +1846,9 @@ export default function App() {
           >
             <span className="min-w-0 flex-1 break-words">{planNotice.message}</span>
             <div className="flex shrink-0 gap-2">
-              <button className="btn btn-ghost btn-xs text-primary" onClick={() => setDebugModalOpen(true)}>
-                🛠️ {t('debug.openDebug')}
+              <button className="btn btn-ghost btn-xs gap-1 text-primary" onClick={() => setDebugModalOpen(true)}>
+                <UiIcon name="wrench" className="h-3.5 w-3.5" />
+                <span>{t('debug.openDebug')}</span>
               </button>
               <button className="btn btn-ghost btn-sm" onClick={aiPlan.generation.dismissNotice}>
                 {t('plan.close')}

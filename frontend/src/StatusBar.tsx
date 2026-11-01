@@ -4,6 +4,7 @@ import { Popover } from './Popover'
 import { WIDGETS } from './statusWidgets'
 import type { Placement, Widget, WidgetCtx } from './widgetTypes'
 import { ErrorBoundary } from './ErrorBoundary'
+import { UiIcon } from './UiIcons'
 
 const NARROW_THRESHOLD = 880
 
@@ -63,14 +64,14 @@ export function StatusBar({ ctx, chatOpen = false, onChat }: { ctx: WidgetCtx; c
         {onChat && ctx.aiEnabled && (
           <button
             data-bar-control
-            className={`tooltip tooltip-top btn btn-ghost btn-xs !min-h-0 h-5 px-1 leading-none ${chatOpen ? 'btn-active' : ''}`}
+            className={`tooltip tooltip-top btn btn-ghost btn-xs !min-h-0 h-6 px-1.5 leading-none ${chatOpen ? 'btn-active text-primary' : ''}`}
             title={t('chat.title')}
         data-tip={t('chat.title')}
             aria-label={t('chat.title')}
             aria-pressed={chatOpen}
             onClick={onChat}
           >
-            💬
+            <UiIcon name="chatBubble" className="h-3.5 w-3.5" />
           </button>
         )}
         {overflowable.length > 0 && (
@@ -80,7 +81,7 @@ export function StatusBar({ ctx, chatOpen = false, onChat }: { ctx: WidgetCtx; c
             onOpenChange={setOvOpen}
             buttonTitle={t('overflow.system')}
             panelClassName="w-72"
-            label="⋯"
+            label={<UiIcon name="moreHorizontal" className="h-3.5 w-3.5" />}
           >
             <div className="flex flex-col gap-1">{overflowable.map(renderOne)}</div>
           </Popover>

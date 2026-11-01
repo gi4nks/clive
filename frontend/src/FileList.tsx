@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { formatDate, formatSize, kindOf, type FileEntry } from './api'
 import { ChildCountBadge } from './ChildCountBadge'
 import { FileIcon } from './FileIcon'
+import { EmptyFolderIllustration, UiIcon } from './UiIcons'
 import { getAppConfig, useAppConfig } from './settings/appConfig'
 import { isArchivePath } from './archivePath'
 import { clampWidth, fitColWidths, COL_MIN, COL_MAX } from './resize'
@@ -81,7 +82,9 @@ function SortHeader({
       } ${align === 'right' ? 'justify-end' : ''}`}
     >
       {label}
-      <span className={`text-[9px] ${active ? '' : 'opacity-0'}`}>{active && sort.dir === 1 ? '▲' : '▼'}</span>
+      <span className={active ? 'inline-flex opacity-80' : 'inline-flex opacity-0'}>
+        <UiIcon name={active && sort.dir === 1 ? 'sortAsc' : 'sortDesc'} className="h-3 w-3" />
+      </span>
     </button>
   )
 }
@@ -246,8 +249,8 @@ export function FileList({
         >
         {marqueeLayer}
           {files.length === 0 ? (
-          <div className="flex h-full flex-col items-center justify-center gap-4 text-sm text-base-content/60">
-            <span className="text-5xl">📭</span>
+          <div className="flex h-full flex-col items-center justify-center gap-3 text-sm text-base-content/55">
+            <EmptyFolderIllustration className="h-14 w-14 text-base-content/45" />
             <span>{t('fileList.noFiles')}</span>
           </div>
           ) : <div className="mx-auto grid max-w-[1200px] grid-cols-[repeat(auto-fill,minmax(110px,1fr))] gap-2">
@@ -270,17 +273,15 @@ export function FileList({
                   }}
                   {...folderDrop(file)}
                   title={file.name}
-                  className={`flex select-none flex-col items-center gap-1 rounded-lg p-2 cursor-default border ${
+                  className={`flex select-none flex-col items-center gap-1 rounded-xl p-2 cursor-default border transition-colors ${
                     dropHover === file.path ? 'ring-2 ring-primary' : ''
                   } ${
                     isSelected
-                      ? 'border-primary/60 bg-primary/20'
-                      : 'border-transparent hover:bg-base-200:bg-base-300 focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-neutral-900:ring-offset-neutral-950'
+                      ? 'border-primary/60 bg-primary/15'
+                      : 'border-transparent hover:bg-base-200/70 focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-neutral-900:ring-offset-neutral-950'
                   }`}
                 >
-                  <div className="flex h-20 w-20 items-center justify-center rounded-lg bg-base-200">
-                    <FileIcon entry={file} size="card" />
-                  </div>
+                  <FileIcon entry={file} size="card" />
                   <span className="max-w-full truncate text-center text-xs font-medium leading-tight">{file.name}</span>
                   {file.tags?.length ? <span className="flex h-2.5 items-center gap-1" aria-label={t('tags.itemTags', { tags: file.tags.map((tag) => tag.name).join(', ') })}>
                     {file.tags.slice(0, 4).map((tag) => <span key={tag.name} title={tag.name} className="inline-block h-1.5 w-1.5 rounded-full" style={{ backgroundColor: ({ 1: '#8e8e93', 2: '#34c759', 3: '#af52de', 4: '#007aff', 5: '#ffcc00', 6: '#ff3b30', 7: '#ff9500' } as Record<number, string>)[tag.color] ?? '#8e8e93' }} />)}
@@ -320,8 +321,8 @@ export function FileList({
       >
         {marqueeLayer}
         {files.length === 0 ? (
-          <div className="flex h-full flex-col items-center justify-center gap-4 text-sm text-base-content/60">
-            <span className="text-5xl">📭</span>
+          <div className="flex h-full flex-col items-center justify-center gap-3 text-sm text-base-content/55">
+            <EmptyFolderIllustration className="h-14 w-14 text-base-content/45" />
             <span>{t('fileList.noFiles')}</span>
           </div>
         ) : files.map((file) => {

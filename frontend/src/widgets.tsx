@@ -7,6 +7,7 @@ import { Popover } from './Popover'
 import type { WidgetCtx } from './widgetTypes'
 import { useVolumes } from './volumes'
 import { splitArchivePath } from './archivePath'
+import { UiIcon, volumeIconName } from './UiIcons'
 
 /** basename for a path (no fs access). */
 const basenameOf = (p: string): string => p.replace(/\/+$/, '').split('/').pop() || p
@@ -97,7 +98,7 @@ export function ContextActionsWidget({ ctx }: { ctx: WidgetCtx }) {
           open={ovOpen}
           onOpenChange={setOvOpen}
           buttonTitle={t('overflow.title')}
-          label="⋯"
+          label={<UiIcon name="moreHorizontal" className="h-3.5 w-3.5" />}
           panelClassName="p-0"
         >
           <ul className="menu menu-sm w-56 p-1">
@@ -299,7 +300,7 @@ export function DiskWidget({ ctx }: { ctx: WidgetCtx }) {
                 onClick={() => ctx.navigate(v.mountPoint)}
               >
                 <span className="flex w-full items-center gap-1.5">
-                  <span aria-hidden>{v.kind === 'internal' ? '💽' : v.kind === 'network' ? '🌐' : '💾'}</span>
+                  <UiIcon name={volumeIconName(v.kind)} className="h-3.5 w-3.5 text-base-content/65" />
                   <span className="min-w-0 flex-1 truncate">{v.name}</span>
                   <span className="tabular-nums opacity-60">{p}%</span>
                 </span>
